@@ -22,7 +22,7 @@ setup(
     install_requires=[
         'relations-dil>=0.6.18'
     ],
-    url="https://github.com/relations-dil/relations-unum",
+    url="https://github.com/relations-dil/python-relations-unum",
     author="Gaffer Fitch",
     author_email="relations@gaf3.com",
     description="Source for locally using multiple Unifist sources as a single Unum",
