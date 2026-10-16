@@ -63,6 +63,7 @@ class TestModule(unittest.TestCase):
         # Where a write goes, from the one row that matches the most, blank matching anything
 
         relations_unum.Scribe(to="local").create()
+        relations_unum.Scribe(unum="home", to="owner").create()
         relations_unum.Scribe(unum="home", model="item", to="writer").create()
         relations_unum.Scribe(unum="home", model="item", identifier="42", to="local").create()
 
