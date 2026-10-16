@@ -20,7 +20,8 @@ setup(
         'relations_unum'
     ],
     install_requires=[
-        'relations-dil>=0.6.18'
+        'relations-dil>=0.6.20',
+        'relations-unifist>=0.1.0'
     ],
     url="https://github.com/relations-dil/python-relations-unum",
     author="Gaffer Fitch",

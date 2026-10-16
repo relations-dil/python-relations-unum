@@ -1,4 +1,5 @@
-relations-dil==0.6.18
+relations-dil==0.6.20
+relations-unifist @ git+https://github.com/relations-dil/python-relations-unifist.git@c98693a
 debugpy==1.8.22
 coverage==7.16.2
 pylint==4.1.3
