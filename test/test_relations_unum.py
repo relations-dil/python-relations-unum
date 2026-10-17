@@ -20,6 +20,21 @@ class TestModule(unittest.TestCase):
 
         self.assertIn("Relations Unum", relations_unum.__doc__)
 
+    def test_journal(self):
+
+        # Another unum's journal, the same as the one here but in the source that unum's records are in
+
+        source = relations_unum.Source("unum", unum="home", local="local", members={"away": "away"})
+        journal = relations_unum.journal(source, "away")
+
+        self.assertEqual(journal.SOURCE, "away")
+        self.assertEqual(journal.thy().NAME, "journal")
+        self.assertEqual(
+            {key: value for key, value in journal.thy().define().items() if key != "source"},
+            {key: value for key, value in relations_unifist.Journal.thy().define().items() if key != "source"}
+        )
+        self.assertEqual(relations_unifist.Journal.SOURCE, "unifist")
+
     def test_models(self):
 
         # The models sync can apply, by the app (source) and block (model) a journal row has
@@ -427,6 +442,109 @@ class TestSource(unittest.TestCase):
 
         self.assertEqual(self.ids(self.away, "item"), ["6:item.unum:away"])
 
+    def fill(self):
+
+        # local has a, d, g, j, m and p, away b, e, h, k, n and q, cloud c, f, i, l, o and r, so sorted by name
+        # they interleave, and away also has a copy of local's first
+
+        Item()
+
+        self.rows = {}
+
+        for number, (source, unum) in enumerate([(self.local, "home"), (self.away, "away"), (self.cloud, "cloud")]):
+            for position in range(6):
+                id = f"{position + 1}:item.unum:{unum}"
+                name = "abcdefghijklmnopqr"[position * 3 + number]
+                source.data["item"][id] = {"id": id, "version": 1, "name": name}
+                self.rows[name] = id
+
+        self.away.data["item"]["1:item.unum:home"] = {"id": "1:item.unum:home", "version": 1, "name": "a"}
+
+    def served(self):
+
+        served = []
+
+        for source in [self.local, self.away, self.cloud]:
+            retrieve = source.retrieve
+
+            def counting(model, *args, retrieve=retrieve, **kwargs):
+                result = retrieve(model, *args, **kwargs)
+                served.append(len(model._models))
+                return result
+
+            source.retrieve = counting
+
+        return served
+
+    def test_stream(self):
+
+        self.fill()
+        self.source.chunk = 2
+
+        # One member's rows in order, a page at a time and only as they're asked for
+
+        served = self.served()
+        stream = self.source.stream("away", Item.many().sort("name"), ["+name"])
+
+        self.assertEqual([next(stream).name for _ in range(3)], ["a", "b", "e"])
+        self.assertEqual(served, [2, 2])
+
+        # To the end, where a short page says it's over
+
+        self.assertEqual([row.name for row in stream], ["h", "k", "n", "q"])
+        self.assertEqual(served, [2, 2, 2, 1])
+
+        # With what the query filters by, and in the order it says
+
+        self.assertEqual([row.name for row in self.source.stream("away", Item.many(name__in=["b", "k", "q"]).sort("-name"), ["-name"])], ["q", "k", "b"])
+
+    def test_select(self):
+
+        self.fill()
+        self.source.chunk = 2
+
+        def names(query):
+            return [row.name for row in query.retrieve()]
+
+        # Every member's rows in the order of the query, as if it was one, a record that's in more than one only once
+
+        self.assertEqual(names(Item.many().sort("name")), list("abcdefghijklmnopqr"))
+        self.assertEqual(names(Item.many().sort("-name")), list("rqponmlkjihgfedcba"))
+        self.assertEqual(names(Item.many()), [name for _, name in sorted((id, name) for name, id in self.rows.items())])
+
+        # With filters and limits
+
+        self.assertEqual(names(Item.many(name__in=["r", "a", "h", "x"]).sort("name")), ["a", "h", "r"])
+        self.assertEqual(names(Item.many().sort("name").limit(3)), ["a", "b", "c"])
+        self.assertEqual(names(Item.many().sort("name").limit(4, start=5)), ["f", "g", "h", "i"])
+        self.assertEqual(names(Item.many().sort("name").limit(page=2, per_page=5)), ["f", "g", "h", "i", "j"])
+
+        # Reading only what's needed, not everything to sort it
+
+        served = self.served()
+
+        self.assertEqual(names(Item.many().sort("name").limit(3)), ["a", "b", "c"])
+        self.assertTrue(6 <= sum(served) <= 10)
+
+        # A source that can't be reached just has no rows
+
+        self.down(self.cloud, "retrieve")
+
+        self.assertEqual(names(Item.many().sort("name")), list("abdeghjkmnpq"))
+
+        # Whatever's picked from is still a model of those records
+
+        found = Item.many().sort("name").limit(2).retrieve()
+
+        self.assertEqual(found.export(), [
+            {"id": self.rows["a"], "version": 1, "name": "a"}, {"id": self.rows["b"], "version": 1, "name": "b"}
+        ])
+
+        found[0].name = "z"
+        found[0].update()
+
+        self.assertEqual(self.local.data["item"][self.rows["a"]]["name"], "z")
+
     def test_count(self):
 
         # Everything else is still here for now
@@ -560,3 +678,82 @@ class TestApply(unittest.TestCase):
 
         self.assertEqual(relations_unum.apply(self.source, unknown, self.models), "clash")
         self.assertEqual(self.clashes()["1:9:nope.unum:away:away"], {"error": "model"})
+
+
+class TestSync(unittest.TestCase):
+
+    maxDiff = None
+
+    def setUp(self):
+
+        self.unifist = relations.unittest.MockSource("unifist")
+        self.local = relations.unittest.MockSource("local")
+        self.away = relations.unittest.MockSource("away")
+
+        self.source = relations_unum.Source("unum", unum="home", local="local", members={"away": "away"})
+        self.models = relations_unum.models(Item)
+        self.journal = relations_unum.journal(self.source, "away")
+
+        relations_unifist.UnifistModel.UNUM = "home"
+
+    def tearDown(self):
+
+        relations_unifist.UnifistModel.UNUM = None
+
+    def write(self, transaction, when, action, **what):
+
+        self.journal(id=transaction, resource_id=what["id"], when=when, what={"action": action, "app": "unum", "block": "item", **what}).create()
+
+    def test_sync(self):
+
+        five = "5:item.unum:away"
+        six = "6:item.unum:away"
+
+        # What away has written, put in out of order, to be applied by when. Record 5 is made, changed and deleted, record 6
+        # is made, and then changed by someone else from a version it isn't at
+
+        self.write("3:5:item.unum:away:away", 30, "delete", id=five, before={"id": five, "version": 2, "name": "b"})
+        self.write("2:6:item.unum:away:cloud", 25, "update", id=six,
+            before={"id": six, "version": 5, "name": "c"}, after={"id": six, "version": 6, "name": "d"})
+        self.write("2:5:item.unum:away:away", 20, "update", id=five,
+            before={"id": five, "version": 1, "name": "a"}, after={"id": five, "version": 2, "name": "b"})
+        self.write("1:6:item.unum:away:away", 15, "create", id=six, after={"id": six, "version": 1, "name": "c"})
+        self.write("1:5:item.unum:away:away", 10, "create", id=five, after={"id": five, "version": 1, "name": "a"})
+
+        # They're applied in order, to the copies here, and the journal here has the same rows
+
+        self.assertEqual(relations_unum.sync(self.source, "away", self.models), {"applied": 4, "skipped": 0, "clash": 1})
+
+        self.assertEqual(list(self.local.data["item"]), [six])
+        self.assertEqual(self.local.data["item"][six]["name"], "c")
+        self.assertEqual(self.away.data["item"], {})
+        self.assertEqual(list(self.unifist.data["journal"]), [
+            "1:5:item.unum:away:away", "1:6:item.unum:away:away", "2:5:item.unum:away:away", "3:5:item.unum:away:away"
+        ])
+        self.assertEqual({id: row["what"] for id, row in self.unifist.data["clash"].items()}, {"2:6:item.unum:away:cloud": {"error": "version"}})
+
+        # Again, it's all done already
+
+        self.assertEqual(relations_unum.sync(self.source, "away", self.models), {"applied": 0, "skipped": 4, "clash": 1})
+        self.assertEqual(len(self.unifist.data["journal"]), 4)
+        self.assertEqual(len(self.unifist.data["clash"]), 1)
+
+        # New rows since are applied, and the rest aren't
+
+        self.write("2:6:item.unum:away:away", 40, "update", id=six,
+            before={"id": six, "version": 1, "name": "c"}, after={"id": six, "version": 2, "name": "e"})
+
+        self.assertEqual(relations_unum.sync(self.source, "away", self.models), {"applied": 1, "skipped": 4, "clash": 1})
+        self.assertEqual(self.local.data["item"][six]["name"], "e")
+
+        # If away can't be reached it's raised, for the next time, and nothing is done
+
+        def failing(model, *args, **kwargs):
+            raise relations.SourceError("away is down")
+
+        self.away.retrieve = failing
+
+        with self.assertRaisesRegex(relations.SourceError, "away is down"):
+            relations_unum.sync(self.source, "away", self.models)
+
+        self.assertEqual(self.local.data["item"][six]["name"], "e")

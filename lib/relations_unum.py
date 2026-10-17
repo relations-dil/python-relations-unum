@@ -3,9 +3,34 @@ Main Relations Unum Module
 """
 
 import contextlib
+import copy
+import heapq
+import itertools
 
 import relations
 import relations_unifist
+
+
+class Ordered:
+    """
+    A row to compare to others by the sorting of a query, each field having a + or a - in front of it
+    """
+
+    def __init__(self, row, sorting):
+
+        self.row = row
+        self.sorting = sorting
+
+    def __lt__(self, other):
+
+        for sort in self.sorting:
+
+            mine, theirs = self.row[sort[1:]], other.row[sort[1:]]
+
+            if mine != theirs:
+                return mine < theirs if sort[0] == "+" else mine > theirs
+
+        return False
 
 
 def blank():
@@ -137,6 +162,8 @@ class Source(relations.Source):
     local = None    # Name of the source this unum's own data is in
     members = None  # Name of the source of each other unum, by the unum's name
 
+    chunk = None  # How many rows to read from a unum at a time, the model's if not set
+
     _syncing = False  # Whether what's written and read is the copy here, for sync
 
     @contextlib.contextmanager
@@ -202,11 +229,69 @@ class Source(relations.Source):
 
         return self.write("create", model, *args, **kwargs)
 
+    def stream(self, name, model, sorting):
+        """
+        Reads the rows of a query from one source in order, a page at a time and only as they're asked for.
+        A source that can't be reached has no rows, so the others are read without it
+        """
+
+        chunk = self.chunk or model._chunk # pylint: disable=protected-access
+        start = 0
+
+        while True:
+
+            page = model.__class__.many()
+            page._record = copy.deepcopy(model._record) # pylint: disable=protected-access
+            page._like = model._like # pylint: disable=protected-access
+            page._sort = list(sorting)
+            page.limit(chunk, start=start)
+
+            try:
+                rows = relations.source(name).retrieve(page)._models # pylint: disable=protected-access
+            except relations.SourceError:
+                return
+
+            yield from rows
+
+            if len(rows) < chunk:
+                return
+
+            start += chunk
+
+    def select(self, model):
+        """
+        Every source's rows of a query in the order it says, as if it was one, with a record that's in more
+        than one only once, the first of them, from here before others. Nothing is read until it's needed
+        """
+
+        sorting = model._ordering(model._sort or model._order) # pylint: disable=protected-access
+        names = dict.fromkeys([self.local, *self.members.values()])
+        seen = set()
+
+        for ordered in heapq.merge(*[
+            (Ordered(row, sorting) for row in self.stream(name, model, sorting)) for name in names
+        ]):
+            if ordered.row.id not in seen:
+                seen.add(ordered.row.id)
+                yield ordered.row
+
     def retrieve(self, model, *args, **kwargs):
         """
         Retrieves a record by its id from here if this unum holds it, or else its owner, writers and readers
-        in turn. Without an id to go by it's from here
+        in turn. A query for many is every source's rows merged in order, and one without an id is from here
         """
+
+        if model._mode == "many" and not self._syncing: # pylint: disable=protected-access
+
+            start = model._offset or 0 # pylint: disable=protected-access
+            stop = None if model._limit is None else start + model._limit # pylint: disable=protected-access
+
+            model._models = list(itertools.islice(self.select(model), start, stop)) # pylint: disable=protected-access
+            model._record = None # pylint: disable=protected-access
+            model._action = "update" # pylint: disable=protected-access
+            model.overflow = model.overflow or (model._limit is not None and len(model._models) >= model._limit) # pylint: disable=protected-access
+
+            return model
 
         criteria = model._record._names[model._id].criteria # pylint: disable=protected-access
         names = self.sources(criteria["eq"], ["owner", "writer", "reader"]) if criteria and not self._syncing else []
@@ -311,3 +396,32 @@ def apply(source, row, models):
             return clash(row, "exists")
 
     return "applied"
+
+
+def journal(source, member):
+    """
+    Another unum's journal, the same as the one here but in the source that unum's records are in. Models
+    don't inherit their fields, so it's made from the fields the journal here has
+    """
+
+    return type("Journal", (relations.Model,), {
+        **{name: value for name, value in vars(relations_unifist.Journal).items() if not name.startswith("_")},
+        "SOURCE": source.members[member]
+    })
+
+
+def sync(source, member, models):
+    """
+    Applies what another unum's journal has that this one doesn't, oldest first, one row at a time, and
+    returns how many were applied, skipped because they were here already, and clashed. If the other unum
+    can't be reached the error is raised, to be tried again
+    """
+
+    # pylint: disable=redefined-outer-name
+
+    counts = {"applied": 0, "skipped": 0, "clash": 0}
+
+    for row in journal(source, member).many().sort("when", "id").retrieve():
+        counts[apply(source, row, models)] += 1
+
+    return counts
