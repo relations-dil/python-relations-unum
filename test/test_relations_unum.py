@@ -20,6 +20,23 @@ class TestModule(unittest.TestCase):
 
         self.assertIn("Relations Unum", relations_unum.__doc__)
 
+    def test_clashed(self):
+
+        # The clashes a record has, any version and writer, in the clash's id, version:identifier:resource:owner:writer
+
+        self.assertEqual(relations_unum.clashed("1:item.unum:home"), [])
+
+        relations_unum.Clash(id="2:1:item.unum:home:away", what={"error": "version"}).create()
+        relations_unum.Clash(id="3:1:item.unum:home:cloud", what={"error": "version"}).create()
+        relations_unum.Clash(id="2:11:item.unum:home:away", what={"error": "missing"}).create()
+
+        self.assertEqual([clash.id for clash in relations_unum.clashed("1:item.unum:home")], [
+            "2:1:item.unum:home:away", "3:1:item.unum:home:cloud"
+        ])
+        self.assertEqual([clash.id for clash in relations_unum.clashed("11:item.unum:home")], ["2:11:item.unum:home:away"])
+        self.assertEqual(relations_unum.clashed("2:item.unum:home"), [])
+        self.assertEqual(relations_unum.clashed("1:item.unum:away"), [])
+
     def test_journal(self):
 
         # Another unum's journal, the same as the one here but in the source that unum's records are in
@@ -404,6 +421,39 @@ class TestSource(unittest.TestCase):
 
         self.assertEqual(self.local.data["item"][item.id]["name"], "d")
 
+        # A record that clashed isn't to be used, until it's sorted out, or it's said to be used anyway
+
+        relations_unum.Clash(id=f"2:{item.id}:away", what={"error": "version"}).create()
+
+        item.name = "e"
+
+        with self.assertRaisesRegex(relations_unum.ClashError, "item: clashed"):
+            item.update()
+
+        self.assertEqual(self.local.data["item"][item.id]["name"], "d")
+
+        again = Item.one(item.id).retrieve()
+        again.name = "f"
+        again.update(force=True)
+
+        self.assertEqual(self.local.data["item"][item.id]["name"], "f")
+
+        # By a query too, for the ones that clashed, and not for the others
+
+        other = Item(name="g").create()
+
+        self.assertEqual(Item.many(name__in=["g", "f"]).set(name="h").update(force=True), 2)
+
+        relations_unum.Clash(id=f"2:{other.id}:away", what={"error": "version"}).create()
+
+        with self.assertRaisesRegex(relations_unum.ClashError, "item: clashed"):
+            Item.many(name="h").set(name="i").update()
+
+        # Not while syncing, where clashes are what's recorded
+
+        with self.source.syncing():
+            self.assertEqual(Item.many(name="h").set(name="j").update(), 2)
+
     def test_delete(self):
 
         # Goes where the record is written to
@@ -418,6 +468,22 @@ class TestSource(unittest.TestCase):
 
         item.delete()
 
+        self.assertEqual(self.ids(self.local, "item"), [])
+
+        # A record that clashed isn't to be used, until it's sorted out, or it's said to be used anyway
+
+        clashed = Item(name="c").create()
+        relations_unum.Clash(id=f"2:{clashed.id}:away", what={"error": "version"}).create()
+
+        with self.assertRaisesRegex(relations_unum.ClashError, "item: clashed"):
+            Item.one(clashed.id).delete()
+
+        with self.assertRaisesRegex(relations_unum.ClashError, "item: clashed"):
+            Item.many(name="c").delete()
+
+        self.assertEqual(self.ids(self.local, "item"), [clashed.id])
+
+        self.assertEqual(Item.one(clashed.id).delete(force=True), 1)
         self.assertEqual(self.ids(self.local, "item"), [])
 
     def test_syncing(self):

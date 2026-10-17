@@ -41,6 +41,12 @@ def blank():
     return relations.Field(str, default="", none=False)
 
 
+class ClashError(relations.ModelError):
+    """
+    A record that clashed isn't to be used until it's sorted out
+    """
+
+
 class Clash(relations_unifist.UnifistBase):
     """
     What broke, with the same id as the journal row it's about, version:identifier:resource:owner:writer
@@ -101,6 +107,15 @@ class Scribe(Matching, relations_unifist.UnifistBase):
     to = ["owner", "writer", "local"]
 
     UNIQUE = ["identifier", "model", "source", "unum"]
+
+
+def clashed(record_id):
+    """
+    The clashes a record has, whoever wrote and whatever version, which are in the clash's id,
+    version:identifier:resource:owner:writer, between the version and the writer
+    """
+
+    return list(Clash.many(id__like=f":{record_id}:").retrieve())
 
 
 def matching(kind, record_id):
@@ -302,17 +317,29 @@ class Source(relations.Source):
 
         return self.attempt(names or [self.local], "retrieve", model, *args, **kwargs)
 
-    def update(self, model, *args, **kwargs):
+    def refuse(self, model, force):
         """
-        Updates where it's written to
+        Refuses a record that clashed, unless it's said to use it anyway, or it's sync that's writing
         """
+
+        if not force and not self._syncing and clashed(model.id):
+            raise ClashError(model, "clashed, use force=True to use it anyway")
+
+    def update(self, model, *args, force=False, **kwargs):
+        """
+        Updates where it's written to, unless it clashed and force isn't set, which is taken here, not sent on
+        """
+
+        self.refuse(model, force)
 
         return self.write("update", model, *args, **kwargs)
 
-    def delete(self, model, *args, **kwargs):
+    def delete(self, model, *args, force=False, **kwargs):
         """
-        Deletes where it's written to
+        Deletes where it's written to, unless it clashed and force isn't set, which is taken here, not sent on
         """
+
+        self.refuse(model, force)
 
         return self.write("delete", model, *args, **kwargs)
 
