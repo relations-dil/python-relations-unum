@@ -1,0 +1,27 @@
+[MASTER]
+fail-under=10
+
+[MESSAGES CONTROL]
+disable=wrong-import-order,
+        protected-access,
+        invalid-name,
+        redefined-builtin,
+        keyword-arg-before-vararg,
+        unsubscriptable-object,
+        unsupported-membership-test,
+        duplicate-code,
+        super-init-not-called,
+        not-an-iterable,
+        no-member,
+        not-callable,
+        too-few-public-methods,
+        arguments-differ,
+        access-member-before-definition,
+        attribute-defined-outside-init
+
+[FORMAT]
+max-line-length=140
+
+[DESIGN]
+max-args=10
+max-attributes=10
