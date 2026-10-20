@@ -5,6 +5,8 @@ All notable changes to python-relations-unum are recorded here, newest first. Fo
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-20
+
 ### Added
 - `RestSource`, a `relations_rest.Source` for an API that serves its models under `/model` (`/model/{singular}` and `/model/{singular}/<id>`), as relations-unifist does: it adds `/model` to the url it is given, and a model's `ENDPOINT` is relative to it. Apps opt in by making their source from it; `relations_rest.Source` is unchanged and still reads models at the root (relations-dil/python-relations-unum#5).
 
