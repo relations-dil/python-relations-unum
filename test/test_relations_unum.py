@@ -1,8 +1,10 @@
 import unittest
+import unittest.mock
 
 import relations
 import relations.unittest
 
+import relations_rest
 import relations_unifist
 
 import relations_unum
@@ -823,3 +825,165 @@ class TestSync(unittest.TestCase):
             relations_unum.sync(self.source, "away", self.models)
 
         self.assertEqual(self.local.data["item"][six]["name"], "e")
+
+
+class Answer:
+    """
+    What a session answers, a status and a body
+    """
+
+    def __init__(self, body, status_code=200):
+
+        self.body = body
+        self.status_code = status_code
+
+    def json(self):
+        """
+        The body
+        """
+
+        return self.body
+
+
+class Session:
+    """
+    A session that records each request and answers from a table of "METHOD url"
+    """
+
+    def __init__(self, answers):
+
+        self.answers = answers
+        self.calls = []
+
+    def request(self, method, url, **kwargs):
+        """
+        Records the request and answers it, or fails if it wasn't expected
+        """
+
+        self.calls.append((method, url, kwargs.get("json")))
+        return Answer(self.answers[f"{method} {url}"])
+
+    def get(self, url, **kwargs):
+        """
+        GET
+        """
+        return self.request("GET", url, **kwargs)
+
+    def post(self, url, **kwargs):
+        """
+        POST
+        """
+        return self.request("POST", url, **kwargs)
+
+    def patch(self, url, **kwargs):
+        """
+        PATCH
+        """
+        return self.request("PATCH", url, **kwargs)
+
+    def delete(self, url, **kwargs):
+        """
+        DELETE
+        """
+        return self.request("DELETE", url, **kwargs)
+
+
+class Unit(relations.Model):
+    SOURCE = "api"
+    id = int
+    name = str
+
+
+class Tested(relations.Model):
+    SOURCE = "api"
+    ENDPOINT = "tests"
+    id = int
+    name = str
+
+
+@unittest.mock.patch("relations.SOURCES", {})
+class TestRestSource(unittest.TestCase):
+
+    maxDiff = None
+
+    def test___init__(self):
+
+        source = relations_unum.RestSource("api", "http://test.com", session="sesh")
+
+        self.assertIsInstance(source, relations_rest.Source)
+        self.assertEqual(source.name, "api")
+        self.assertEqual(source.url, "http://test.com/model")
+        self.assertEqual(source.session, "sesh")
+        self.assertIs(relations.SOURCES["api"], source)
+
+        # A slash at the end of the url isn't doubled
+
+        self.assertEqual(relations_unum.RestSource("slashed", "http://test.com/", session="sesh").url, "http://test.com/model")
+
+        # Without a session it makes one, with what's left as its attributes, and the url is still only /model
+
+        source = relations_unum.RestSource("made", "http://test.com/app", verify=False)
+
+        self.assertEqual(source.url, "http://test.com/app/model")
+        self.assertFalse(source.session.verify)
+
+    def test_models(self):
+
+        # Create, retrieve, update and delete go to /model/{singular}, with the id for an update
+
+        session = Session({
+            "POST http://test.com/model/unit": {"units": [{"id": 1}]},
+            "GET http://test.com/model/unit": {"units": [{"id": 1, "name": "a"}]},
+            "PATCH http://test.com/model/unit/1": {"updated": 1},
+            "DELETE http://test.com/model/unit": {"deleted": 1}
+        })
+
+        relations_unum.RestSource("api", "http://test.com", session=session)
+
+        unit = Unit("a").create()
+
+        self.assertEqual(unit.id, 1)
+
+        unit = Unit.one(1)
+
+        self.assertEqual(unit.name, "a")
+
+        unit.name = "b"
+
+        self.assertEqual(unit.update(), 1)
+        self.assertEqual(Unit.one(1).delete(), 1)
+
+        self.assertEqual([call[:2] for call in session.calls], [
+            ("POST", "http://test.com/model/unit"),
+            ("GET", "http://test.com/model/unit"),
+            ("PATCH", "http://test.com/model/unit/1"),
+            ("GET", "http://test.com/model/unit"),
+            ("DELETE", "http://test.com/model/unit")
+        ])
+
+    def test_endpoint(self):
+
+        # A model's ENDPOINT is relative to /model
+
+        session = Session({
+            "POST http://test.com/model/tests": {"testeds": [{"id": 2}]},
+            "GET http://test.com/model/tests": {"testeds": [{"id": 2, "name": "a"}]},
+            "PATCH http://test.com/model/tests/2": {"updated": 1}
+        })
+
+        relations_unum.RestSource("api", "http://test.com", session=session)
+
+        tested = Tested("a").create()
+
+        self.assertEqual(tested.id, 2)
+
+        tested.name = "b"
+        tested.update()
+
+        self.assertEqual(Tested.many(name="a").name, ["a"])
+
+        self.assertEqual([call[:2] for call in session.calls], [
+            ("POST", "http://test.com/model/tests"),
+            ("PATCH", "http://test.com/model/tests/2"),
+            ("GET", "http://test.com/model/tests")
+        ])

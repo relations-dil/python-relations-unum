@@ -8,6 +8,7 @@ import heapq
 import itertools
 
 import relations
+import relations_rest
 import relations_unifist
 
 
@@ -452,3 +453,14 @@ def sync(source, member, models):
         counts[apply(source, row, models)] += 1
 
     return counts
+
+
+class RestSource(relations_rest.Source):
+    """
+    A REST source for an API that serves its models under /model, as relations_unifist does: /model/{singular}
+    and /model/{singular}/<id>. A model's ENDPOINT is still relative, to /model.
+    """
+
+    def __init__(self, name, url, session=None, **kwargs):
+
+        super().__init__(name, f"{url.rstrip('/')}/model", session=session, **kwargs)
