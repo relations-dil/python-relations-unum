@@ -3,10 +3,17 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-22
 
+### Added
+- Scoped fan-out: a query is for the unums it names with a `unum` criterion (`unum="away"` or `unum__in=[...]`), or all of them if it names none, and each is asked for its own rows alone, with `unum=<that unum>` (this unum's own source, `local`, with `unum=<this unum>`). A query naming only this unum is answered from `local` and goes no further, so a member's API, which runs its own unum `Source`, doesn't fan out again and send the whole Net back. A unum that's neither this one nor a member is never asked, so a query naming only those has no rows. Each unum's source is looked up from the unum (`Source.universe()`), not taken to be it (relations-dil/python-relations-unum#8, part of relations-dil/python-relations#93).
+- `count` is the sum of each unum's own count, where it was this unum's alone. A source that can't be reached has none, as it has no rows, and what's synced is counted here alone.
+- `Source.named`, `scopes`, `scoped` and `universe`, the pieces of that.
+
+No sync and no scribe rows yet: writes stay local, the Unums just work together live. The id dedupe in `select` stays as a safety net.
 
 ### Changed
+- Needs relations-unifist 0.3.0, whose models have a `unum` field (relations-dil/python-relations-unifist#8), so each model that's routed here needs `unum = str`. `requirements.txt` has the packages unifist pins (relations-restx, flask and the rest), and the `Dockerfile` and `make setup` use `python:3.13`, as flask 2.1.2 does not run on Python 3.14 and later.
 - `make release-check` and `make release` don't run `build`, `test`, `lint` and `setup` again: the Jenkins stages have just run them before the release stage, so it was the same work twice. Run them yourself before checking by hand, as `make release-check` is only the checks and `dist-check` now (relations-dil/python-relations#90).
 
 ## [0.2.0] - 2026-10-20

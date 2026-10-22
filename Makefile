@@ -38,8 +38,8 @@ test: ## Runs the tests with coverage
 lint: ## Runs pylint
 	docker run --rm $(TTY) $(VOLUMES) $(ENVIRONMENT) $(ACCOUNT)/$(IMAGE):$(VERSION) sh -c "pylint --rcfile=.pylintrc lib/"
 
-setup: ## Checks it installs and its modules run on the latest python
-	docker run --rm $(TTY) $(VOLUMES) $(PYPI) python:3 sh -c "cp -r /opt/service /opt/install && cd /opt/install/ && \
+setup: ## Checks it installs and its modules run on python 3.13, the newest flask 2.1 runs on
+	docker run --rm $(TTY) $(VOLUMES) $(PYPI) python:3.13 sh -c "cp -r /opt/service /opt/install && cd /opt/install/ && \
 	pip install -q --root-user-action=ignore . && \
 	python -m relations_unum"
 

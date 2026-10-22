@@ -1,6 +1,13 @@
 relations-dil==0.6.20
-relations-unifist==0.1.0
+relations-unifist==0.3.0
 relations-rest==0.5.5
+relations-restx==0.6.7
+Werkzeug==2.1.2
+flask==2.1.2
+flask-restx==0.5.1
+jsonschema==4.17.3
+MarkupSafe==2.1.5
+click==8.1.8
 requests==2.25.1
 debugpy==1.8.22
 coverage==7.16.2

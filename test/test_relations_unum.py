@@ -227,6 +227,7 @@ class Item(Base):
 
     id = str
     version = int, 1
+    unum = str
     name = str
 
 
@@ -234,6 +235,7 @@ class Owned(Base):
 
     id = str
     version = int, 1
+    unum = str
     name = str
 
 
@@ -241,6 +243,7 @@ class Mine(Base):
 
     id = str
     version = int, 1
+    unum = str
     name = str
 
 
@@ -248,6 +251,7 @@ class Team(Base):
 
     id = str
     version = int, 1
+    unum = str
     name = str
 
 
@@ -255,6 +259,7 @@ class Copied(Base):
 
     id = str
     version = int, 1
+    unum = str
     name = str
 
 
@@ -402,7 +407,7 @@ class TestSource(unittest.TestCase):
 
         # A record with no id to go by is looked for here
 
-        self.assertEqual(Item.many(name="a").retrieve().export(), [{"id": item.id, "version": 1, "name": "a"}])
+        self.assertEqual(Item.many(name="a").retrieve().export(), [{"id": item.id, "version": 1, "unum": "home", "name": "a"}])
 
     def test_update(self):
 
@@ -523,10 +528,10 @@ class TestSource(unittest.TestCase):
             for position in range(6):
                 id = f"{position + 1}:item.unum:{unum}"
                 name = "abcdefghijklmnopqr"[position * 3 + number]
-                source.data["item"][id] = {"id": id, "version": 1, "name": name}
+                source.data["item"][id] = {"id": id, "version": 1, "unum": unum, "name": name}
                 self.rows[name] = id
 
-        self.away.data["item"]["1:item.unum:home"] = {"id": "1:item.unum:home", "version": 1, "name": "a"}
+        self.away.data["item"]["1:item.unum:home"] = {"id": "1:item.unum:home", "version": 1, "unum": "home", "name": "a"}
 
     def served(self):
 
@@ -605,7 +610,8 @@ class TestSource(unittest.TestCase):
         found = Item.many().sort("name").limit(2).retrieve()
 
         self.assertEqual(found.export(), [
-            {"id": self.rows["a"], "version": 1, "name": "a"}, {"id": self.rows["b"], "version": 1, "name": "b"}
+            {"id": self.rows["a"], "version": 1, "unum": "home", "name": "a"},
+            {"id": self.rows["b"], "version": 1, "unum": "away", "name": "b"}
         ])
 
         found[0].name = "z"
@@ -613,14 +619,178 @@ class TestSource(unittest.TestCase):
 
         self.assertEqual(self.local.data["item"][self.rows["a"]]["name"], "z")
 
+    def test_universe(self):
+
+        # This unum's source first, then each other's, this unum being a member too changing nothing
+
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "away", "cloud": "cloud"})
+
+        self.source.members["home"] = "elsewhere"
+
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "away", "cloud": "cloud"})
+
+    def test_named(self):
+
+        # No unum criterion names none, which is all of them
+
+        self.assertIsNone(self.source.named(Item.many()))
+        self.assertIsNone(self.source.named(Item.many(name="a")))
+        self.assertIsNone(self.source.named(Item.many(unum__not_in=["away"])))
+
+        # One or more are named by eq or in
+
+        self.assertEqual(self.source.named(Item.many(unum="away")), {"away"})
+        self.assertEqual(self.source.named(Item.many(unum__in=["away", "cloud"])), {"away", "cloud"})
+
+        # Both having to be satisfied, only what's in each is named
+
+        self.assertEqual(self.source.named(Item.many(unum="away", unum__in=["away", "cloud"])), {"away"})
+        self.assertEqual(self.source.named(Item.many(unum="home", unum__in=["away", "cloud"])), set())
+
+    def test_scopes(self):
+
+        # Each unum there is, this one's first, when none are named
+
+        self.assertEqual(self.source.scopes(Item.many()), [("home", "local"), ("away", "away"), ("cloud", "cloud")])
+
+        # Only the ones named, in the order of the unums there are, not the order named
+
+        self.assertEqual(self.source.scopes(Item.many(unum="away")), [("away", "away")])
+        self.assertEqual(self.source.scopes(Item.many(unum__in=["cloud", "home"])), [("home", "local"), ("cloud", "cloud")])
+
+        # A unum there isn't is never asked, so a query naming only those is for none
+
+        self.assertEqual(self.source.scopes(Item.many(unum__in=["away", "nowhere"])), [("away", "away")])
+        self.assertEqual(self.source.scopes(Item.many(unum="nowhere")), [])
+        self.assertEqual(self.source.scopes(Item.many(unum="home", unum__in=["away"])), [])
+
+    def test_scoped(self):
+
+        # A copy for one unum, with the query's other criteria and like kept, and whatever it named replaced
+
+        query = Item.many(name__in=["a", "b"], unum__in=["away", "cloud"], unum="away", like="a")
+        page = self.source.scoped(query, "cloud")
+
+        self.assertEqual(page._record._names["unum"].criteria, {"eq": "cloud"})
+        self.assertEqual(page._record._names["name"].criteria, {"in": ["a", "b"]})
+        self.assertEqual(page._like, query._like)
+
+        # The query isn't changed, nor does it share anything with the copy
+
+        self.assertEqual(query._record._names["unum"].criteria, {"in": ["away", "cloud"], "eq": "away"})
+
+        # Naming none is still scoped
+
+        self.assertEqual(self.source.scoped(Item.many(), "away")._record._names["unum"].criteria, {"eq": "away"})
+
+        # And the criteria that aren't for naming are kept
+
+        self.assertEqual(
+            self.source.scoped(Item.many(unum__not_in=["away"]), "cloud")._record._names["unum"].criteria,
+            {"not_in": ["away"], "eq": "cloud"}
+        )
+
+    def test_scoped_select(self):
+
+        self.fill()
+        self.source.chunk = 2
+
+        def names(query):
+            return [row.name for row in query.retrieve()]
+
+        # A query for a unum is only that unum's rows, so away's copy of home's first isn't there, and others aren't asked
+
+        self.assertEqual(names(Item.many(unum="away").sort("name")), list("behknq"))
+        self.assertEqual(names(Item.many(unum="home").sort("name")), list("adgjmp"))
+
+        asked = []
+
+        for source in [self.local, self.away, self.cloud]:
+            retrieve = source.retrieve
+
+            def recording(model, *args, retrieve=retrieve, name=source.name, **kwargs):
+                asked.append((name, model._record._names["unum"].criteria))
+                return retrieve(model, *args, **kwargs)
+
+            source.retrieve = recording
+
+        names(Item.many(unum="away").sort("name"))
+
+        self.assertEqual({name for name, _ in asked}, {"away"})
+        self.assertEqual({str(criteria) for _, criteria in asked}, {"{'eq': 'away'}"})
+
+        # Or the ones it names, each asked for its own
+
+        asked.clear()
+
+        self.assertEqual(names(Item.many(unum__in=["away", "cloud"]).sort("name")), list("bcefhiklnoqr"))
+        self.assertEqual(sorted({(name, str(criteria)) for name, criteria in asked}), [
+            ("away", "{'eq': 'away'}"), ("cloud", "{'eq': 'cloud'}")
+        ])
+
+        # With nothing named it's all of them, each asked for its own, the copy only once, as the home's
+
+        asked.clear()
+
+        self.assertEqual(names(Item.many().sort("name")), list("abcdefghijklmnopqr"))
+        self.assertEqual(sorted({(name, str(criteria)) for name, criteria in asked}), [
+            ("away", "{'eq': 'away'}"), ("cloud", "{'eq': 'cloud'}"), ("local", "{'eq': 'home'}")
+        ])
+
+        # A unum there isn't is never asked, and a query naming only those has no rows
+
+        asked.clear()
+
+        self.assertEqual(names(Item.many(unum__in=["away", "nowhere"]).sort("name")), list("behknq"))
+        self.assertEqual(names(Item.many(unum="nowhere")), [])
+        self.assertEqual({name for name, _ in asked}, {"away"})
+
+        # Rows that sort the same, from every unum, are all there
+
+        self.assertEqual(len(names(Item.many().sort("version"))), 18)
+
+        # What else it filters by is still done, and limits are of the whole
+
+        self.assertEqual(names(Item.many(unum__in=["away", "cloud"], name__in=["b", "c", "q"]).sort("name")), ["b", "c", "q"])
+        self.assertEqual(names(Item.many(unum__in=["away", "cloud"]).sort("name").limit(3, start=2)), ["e", "f", "h"])
+
+        # A member's own API runs its own unum source, which a query for just it never gets past
+
+        self.down(self.away, "retrieve")
+
+        self.assertEqual(names(Item.many(unum="away")), [])
+
     def test_count(self):
 
-        # Everything else is still here for now
+        self.fill()
 
-        Item(name="a").create()
-        Item(name="b").create()
+        # Each unum's own rows added up, away's copy of home's first not counted twice
 
-        self.assertEqual(Item.many().count(), 2)
+        self.assertEqual(Item.many().count(), 18)
+        self.assertEqual(Item.many(name__in=["a", "b", "c"]).count(), 3)
+
+        # Only the ones it names, each asked for its own
+
+        self.assertEqual(Item.many(unum="away").count(), 6)
+        self.assertEqual(Item.many(unum="home").count(), 6)
+        self.assertEqual(Item.many(unum__in=["away", "cloud"]).count(), 12)
+        self.assertEqual(Item.many(unum__in=["away", "cloud"], name__in=["b", "c", "a"]).count(), 2)
+
+        # Never one there isn't
+
+        self.assertEqual(Item.many(unum="nowhere").count(), 0)
+        self.assertEqual(Item.many(unum__in=["away", "nowhere"]).count(), 6)
+
+        # A source that can't be reached has none
+
+        self.down(self.cloud, "count")
+
+        self.assertEqual(Item.many().count(), 12)
+
+        # And what's synced is counted here alone, as it's here alone it's written and read
+
+        with self.source.syncing():
+            self.assertEqual(Item.many().count(), 6)
 
 
 class TestApply(unittest.TestCase):
