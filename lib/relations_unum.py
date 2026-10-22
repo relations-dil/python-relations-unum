@@ -220,6 +220,58 @@ class Source(relations.Source):
 
         return getattr(relations.source(last), action)(model, *args, **kwargs)
 
+    def universe(self):
+        """
+        The name of the source of each unum there is, this unum's own (local) first, then each other's (members)
+        """
+
+        return {self.unum: self.local, **{unum: name for unum, name in self.members.items() if unum != self.unum}}
+
+    @staticmethod
+    def named(model):
+        """
+        The unums a query names with its unum criteria, both eq and in having to be satisfied, or None if it
+        names none
+        """
+
+        criteria = model._record._names["unum"].criteria or {} # pylint: disable=protected-access
+        named = None
+
+        if "eq" in criteria:
+            named = {criteria["eq"]}
+
+        if "in" in criteria:
+            named = set(criteria["in"]) if named is None else named & set(criteria["in"])
+
+        return named
+
+    def scopes(self, model):
+        """
+        The unum and name of the source of each unum a query is for: all of them if it names none, else only
+        the ones it names that there are. A unum there isn't is never asked
+        """
+
+        named = self.named(model)
+
+        return [(unum, name) for unum, name in self.universe().items() if named is None or unum in named]
+
+    @staticmethod
+    def scoped(model, unum):
+        """
+        A copy of a query for one unum alone, whatever unums it named replaced by that one
+        """
+
+        page = model.__class__.many()
+        page._record = copy.deepcopy(model._record) # pylint: disable=protected-access
+        page._like = model._like # pylint: disable=protected-access
+
+        field = page._record._names["unum"] # pylint: disable=protected-access
+        field.criteria = field.criteria or {}
+        field.criteria.pop("in", None)
+        field.criteria["eq"] = unum
+
+        return page
+
     def init(self, model):
         """
         Every source it routes to has to know the model
@@ -276,16 +328,17 @@ class Source(relations.Source):
 
     def select(self, model):
         """
-        Every source's rows of a query in the order it says, as if it was one, with a record that's in more
-        than one only once, the first of them, from here before others. Nothing is read until it's needed
+        Every row of a query from each unum it's for, each asked for its own rows alone, in the order it says as
+        if it was one, with a record that's in more than one only once, the first of them, from here before
+        others. Nothing is read until it's needed
         """
 
         sorting = model._ordering(model._sort or model._order) # pylint: disable=protected-access
-        names = dict.fromkeys([self.local, *self.members.values()])
         seen = set()
 
         for ordered in heapq.merge(*[
-            (Ordered(row, sorting) for row in self.stream(name, model, sorting)) for name in names
+            (Ordered(row, sorting) for row in self.stream(name, self.scoped(model, unum), sorting))
+            for unum, name in self.scopes(model)
         ]):
             if ordered.row.id not in seen:
                 seen.add(ordered.row.id)
@@ -294,7 +347,7 @@ class Source(relations.Source):
     def retrieve(self, model, *args, **kwargs):
         """
         Retrieves a record by its id from here if this unum holds it, or else its owner, writers and readers
-        in turn. A query for many is every source's rows merged in order, and one without an id is from here
+        in turn. A query for many is the rows of each unum it's for merged in order, and one without an id is from here
         """
 
         if model._mode == "many" and not self._syncing: # pylint: disable=protected-access
@@ -346,10 +399,22 @@ class Source(relations.Source):
 
     def count(self, model, *args, **kwargs):
         """
-        Counts here for now
+        Counts what each unum the query is for has of its own, and adds them up. A source that can't be reached
+        has none, as it has no rows, and what's synced is counted here alone
         """
 
-        return relations.source(self.local).count(model, *args, **kwargs)
+        if self._syncing:
+            return relations.source(self.local).count(model, *args, **kwargs)
+
+        total = 0
+
+        for unum, name in self.scopes(model):
+            try:
+                total += relations.source(name).count(self.scoped(model, unum), *args, **kwargs)
+            except relations.SourceError:
+                continue
+
+        return total
 
 
 def models(*classes):
