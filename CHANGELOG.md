@@ -3,6 +3,20 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.4.0] - 2026-10-22
+
+### Added
+- Members are `Route` rows, read each time they're needed, so joining is inserting a row and leaving is deleting it, with no restart and no configmap. A holder is anyone a row with a `url` names (not this unum), and a unum is a member when its owner's row, with no identifier, model or source (`unum=b, role=owner, holder=b, url=...`), says who holds it. The first row of a holder gives its url. Reading them is one local query for each request, as `matching()` already is for get-by-id (relations-dil/python-relations-unum#11).
+- One `RestSource` for each holder, named `<source>-<holder>` (`unum-b`), made when its row's url is new and made again, under the same name, only if the url changes. It is told about the model it is made for, as models made later are told by every source there is.
+- With a member row in place get-by-id finds a record of that unum through `route()`: the row matches every id that ends in the unum, so no fallback to the unum in the id is needed (relations-dil/python-relations-unum#10, closed for this).
+
+### Changed
+- `members=` when making a `Source` is optional. Given, it is still there, apart from the rows, and wins for a holder both name. `init` reads no rows, as they may not be there yet.
+- `journal(source, member)` finds a unum's source from `Source.universe()`, not from `members`.
+- `Source.holders` and `Source.reach` are new, the pieces of that, and `Source.sources` takes the model it is for. A route to a holder with no way to reach it is still an error (`KeyError`), not a write or read here.
+
+No auth in v1; the client certs idea on relations-dil/python-relations-unum#8 is for later, and would be a `session` for the holder's `RestSource`.
+
 ## [0.3.0] - 2026-10-22
 
 ### Added

@@ -793,6 +793,229 @@ class TestSource(unittest.TestCase):
             self.assertEqual(Item.many().count(), 6)
 
 
+class TestRoutedSource(unittest.TestCase):
+    """
+    A source with no members of its own, who they are and where being the Route rows with a url
+    """
+
+    maxDiff = None
+
+    def setUp(self):
+
+        self.unifist = relations.unittest.MockSource("unifist")
+        self.local = relations.unittest.MockSource("local")
+
+        self.made = []
+
+        patcher = unittest.mock.patch("relations_unum.RestSource", side_effect=self.rest)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.source = relations_unum.Source("unum", unum="home", local="local")
+
+        relations_unifist.UnifistModel.UNUM = "home"
+
+    def tearDown(self):
+
+        relations_unifist.UnifistModel.UNUM = None
+
+    def rest(self, name, url):
+
+        # What the RestSource of a holder is, here a source of its own that keeps the url it was made with
+
+        source = relations.unittest.MockSource(name)
+        source.reached = url
+        self.made.append((name, url))
+
+        return source
+
+    def member(self, unum, url=None):
+
+        return relations_unum.Route(unum=unum, role="owner", holder=unum, url=url or f"http://{unum}").create()
+
+    def fill(self, source, unum, count):
+
+        for position in range(count):
+            id = f"{position + 1}:item.unum:{unum}"
+            source.data["item"][id] = {"id": id, "version": 1, "unum": unum, "name": f"{unum}{position + 1}"}
+
+    def test_holders(self):
+
+        # No rows, no one
+
+        self.assertEqual(self.source.holders(relations_unum.Route.many().retrieve()), {})
+        self.assertEqual(self.made, [])
+
+        # A holder with a url, once each, whatever else the row is for, the first row's url being used
+
+        self.member("away")
+        relations_unum.Route(unum="home", model="item", role="writer", holder="away", url="http://elsewhere").create()
+        relations_unum.Route(unum="home", model="item", role="reader", holder="cloud", url="http://cloud").create()
+
+        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve()), {"away": "unum-away", "cloud": "unum-cloud"})
+        self.assertEqual(self.made, [("unum-away", "http://away"), ("unum-cloud", "http://cloud")])
+
+        # Not made again for the next request
+
+        self.source.holders(relations_unum.Route.many().sort("id").retrieve())
+
+        self.assertEqual(len(self.made), 2)
+
+        # But again if its url changes, under the same name
+
+        route = relations_unum.Route.many(holder="away", model="").retrieve()[0]
+        route.url = "http://moved"
+        route.update()
+
+        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["away"], "unum-away")
+        self.assertEqual(self.made[-1], ("unum-away", "http://moved"))
+        self.assertEqual(relations.source("unum-away").reached, "http://moved")
+
+        # Rows with no url, or this unum as the holder, are no one to reach
+
+        relations_unum.Route(unum="home", model="a", role="reader", holder="nourl").create()
+        relations_unum.Route(unum="home", model="b", role="reader", holder="home", url="http://home").create()
+
+        self.assertEqual(
+            sorted(self.source.holders(relations_unum.Route.many().retrieve())),
+            ["away", "cloud"]
+        )
+
+        # And the members this was made with are used before a row's, with no source made for them
+
+        self.source.members = {"away": "static"}
+
+        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["away"], "static")
+        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["cloud"], "unum-cloud")
+
+    def test_universe(self):
+
+        # Just this unum when nothing says otherwise
+
+        self.assertEqual(self.source.universe(), {"home": "local"})
+
+        # A unum is a member when its owner's row says who holds it and where, and the row is for the unum as a whole
+
+        self.member("away")
+        relations_unum.Route(unum="cloud", model="item", role="owner", holder="cloud", url="http://cloud").create()
+        relations_unum.Route(unum="mid", role="reader", holder="mid", url="http://mid").create()
+
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away"})
+
+        # Who holds it isn't who it is, so a unum can be held by another
+
+        relations_unum.Route(unum="gone", role="owner", holder="away").create()
+
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away", "gone": "unum-away"})
+
+        # A holder that can't be reached holds nothing, and this unum holds its own
+
+        relations_unum.Route(unum="lost", role="owner", holder="nowhere").create()
+        relations_unum.Route(unum="mine", role="owner", holder="home", url="http://home").create()
+
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away", "gone": "unum-away"})
+
+        # The members this was made with are there too, and win
+
+        self.source.members = {"away": "static", "cloud": "cloud"}
+
+        self.assertEqual(
+            self.source.universe(),
+            {"home": "local", "away": "static", "cloud": "cloud", "gone": "static"}
+        )
+
+    def test_init(self):
+
+        # Every source it routes to has to know the model, the ones made for the rows as well as local
+
+        Item()
+
+        self.assertEqual(self.local.data["item"], {})
+
+        self.member("away")
+
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away"})
+        self.assertNotIn("item", relations.source("unum-away").data)
+
+        # A model made after is told to the one made for the row
+
+        Owned()
+
+        self.assertEqual(self.local.data["owned"], {})
+        self.assertEqual(relations.source("unum-away").data["owned"], {})
+
+        # And one made while a model that was made before it is used is told about that model alone
+
+        self.member("cloud")
+
+        item = Item.one("1:item.unum:cloud")
+        self.source.sources("1:item.unum:cloud", ["owner"], item)
+
+        self.assertEqual(relations.source("unum-cloud").data["item"], {})
+        self.assertNotIn("owned", relations.source("unum-cloud").data)
+
+    def test_many(self):
+
+        self.member("away")
+        self.source.universe()
+        Item()
+        away = relations.source("unum-away")
+
+        self.fill(self.local, "home", 2)
+        self.fill(away, "away", 3)
+
+        # Joining is the row: each unum answers for its own, the sum is the count
+
+        self.assertEqual([item.name for item in Item.many().sort("name").retrieve()], ["away1", "away2", "away3", "home1", "home2"])
+        self.assertEqual(Item.many().count(), 5)
+
+        self.assertEqual([item.name for item in Item.many(unum="away").retrieve()], ["away1", "away2", "away3"])
+        self.assertEqual(Item.many(unum="away").count(), 3)
+        self.assertEqual(Item.many(unum="home").count(), 2)
+
+        # Leaving is the row too
+
+        relations_unum.Route.many(holder="away").delete()
+
+        self.assertEqual([item.name for item in Item.many().sort("name").retrieve()], ["home1", "home2"])
+        self.assertEqual(Item.many().count(), 2)
+
+    def test_one(self):
+
+        # A record is found where its owner's row says, with nothing else saying where it is
+
+        self.member("away")
+        self.source.universe()
+        Item()
+        self.fill(relations.source("unum-away"), "away", 1)
+        self.fill(self.local, "home", 1)
+
+        self.assertEqual(Item.one("1:item.unum:away").retrieve().name, "away1")
+        self.assertEqual(Item.one("1:item.unum:home").retrieve().name, "home1")
+
+        # A record of a unum with no row is looked for here, and isn't there
+
+        with self.assertRaises(relations.NotFoundError):
+            Item.one("1:item.unum:cloud").retrieve()
+
+        # A route to a holder there's no way to reach is an error, not here
+
+        relations_unum.Route(unum="home", model="item", role="owner", holder="nowhere").create()
+
+        with self.assertRaises(KeyError):
+            Item.one("1:item.unum:home").retrieve()
+
+    def test_journal(self):
+
+        # Another unum's journal is in the source of the unum, however it's a member
+
+        self.member("away")
+
+        journal = relations_unum.journal(self.source, "away")
+
+        self.assertEqual(journal.SOURCE, "unum-away")
+
+
 class TestApply(unittest.TestCase):
 
     maxDiff = None
