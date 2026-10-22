@@ -3,7 +3,7 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-22
 
 
 ### Changed
