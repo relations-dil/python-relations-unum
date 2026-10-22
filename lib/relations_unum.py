@@ -170,13 +170,22 @@ class Source(relations.Source):
     Routes each operation on a record to the source that has it. It stores nothing: it passes the call to the
     source of the unum the record's routes and scribe say, here (local) or another unum's (members). The rest
     is still here for now
+
+    Members are the holders of the Route rows that have a url, read each time they're needed, so joining is
+    inserting a row. A holder gets one RestSource, made when its url is new and again only if it changes, and told
+    about the model it's made for, as models made later are told by every source there is. Members given when
+    this is made are always there, and are used before a row's
     """
 
     KIND = "unum"
 
     unum = None     # Name of this unum
     local = None    # Name of the source this unum's own data is in
-    members = None  # Name of the source of each other unum, by the unum's name
+    members = None  # Name of the source of each other unum, by the unum's name, apart from the Route rows
+
+    def __init__(self, name, **kwargs): # pylint: disable=unused-argument
+
+        self.reached = {}  # The url and name of the source made for each holder a Route row has a url for
 
     chunk = None  # How many rows to read from a unum at a time, the model's if not set
 
@@ -195,13 +204,50 @@ class Source(relations.Source):
         finally:
             self._syncing = False
 
-    def sources(self, record_id, roles):
+    def reach(self, holder, url, model=None):
         """
-        The names of the sources of those who hold a record in the roles, in order, local being this unum's own
+        The name of the source of a holder at a url, made when the holder is new or its url changed, and not
+        again while it's the same, and told about the model it's made for, which was made before it was. Making
+        one registers it, so it's never made for each request
         """
 
+        reached = self.reached.get(holder)
+
+        if reached is None or reached[0] != url:
+
+            source = RestSource(f"{self.name}-{holder}", url)
+
+            if model is not None:
+                source.init(model)
+
+            reached = self.reached[holder] = (url, source.name)
+
+        return reached[1]
+
+    def holders(self, rows, model=None):
+        """
+        The name of the source of each holder but this unum, from the members this was made with and then the
+        rows with a url, the first row of a holder having its url, any source made told about the model
+        """
+
+        found = dict(self.members or {})
+
+        for row in rows:
+            if row.url and row.holder and row.holder != self.unum and row.holder not in found:
+                found[row.holder] = self.reach(row.holder, row.url, model)
+
+        return found
+
+    def sources(self, record_id, roles, model=None):
+        """
+        The names of the sources of those who hold a record in the roles, in order, local being this unum's own,
+        any source made told about the model
+        """
+
+        holders = self.holders(Route.many().sort("id").retrieve(), model)
+
         return [
-            self.local if row.holder == self.unum else self.members[row.holder]
+            self.local if row.holder == self.unum else holders[row.holder]
             for row in route(record_id) if row.role in roles
         ]
 
@@ -222,10 +268,23 @@ class Source(relations.Source):
 
     def universe(self):
         """
-        The name of the source of each unum there is, this unum's own (local) first, then each other's (members)
+        The name of the source of each unum there is, this unum's own (local) first, then each other's (members),
+        which are the ones this was made with, then the ones whose owner's rows, with no identifier, model or source,
+        say who holds them and where
         """
 
-        return {self.unum: self.local, **{unum: name for unum, name in self.members.items() if unum != self.unum}}
+        rows = list(Route.many().sort("id").retrieve())
+        holders = self.holders(rows)
+        found = {self.unum: self.local}
+
+        for unum, name in (self.members or {}).items():
+            found.setdefault(unum, name)
+
+        for row in rows:
+            if row.role == "owner" and row.unum and not (row.identifier or row.model or row.source) and row.holder in holders:
+                found.setdefault(row.unum, holders[row.holder])
+
+        return found
 
     @staticmethod
     def named(model):
@@ -274,10 +333,11 @@ class Source(relations.Source):
 
     def init(self, model):
         """
-        Every source it routes to has to know the model
+        Every source it routes to has to know the model, the members and those made for the rows so far. Nothing
+        is read here, as the rows may not be there yet
         """
 
-        for name in dict.fromkeys([self.local, *self.members.values()]):
+        for name in dict.fromkeys([self.local, *(self.members or {}).values(), *[name for _, name in self.reached.values()]]):
             relations.source(name).init(model)
 
     def write(self, action, model, *args, **kwargs):
@@ -286,7 +346,7 @@ class Source(relations.Source):
         """
 
         rule = None if self._syncing else scribe(model.id)
-        names = self.sources(model.id, [rule.to]) if rule and rule.to != "local" else []
+        names = self.sources(model.id, [rule.to], model) if rule and rule.to != "local" else []
 
         return self.attempt(names or [self.local], action, model, *args, **kwargs)
 
@@ -363,7 +423,7 @@ class Source(relations.Source):
             return model
 
         criteria = model._record._names[model._id].criteria # pylint: disable=protected-access
-        names = self.sources(criteria["eq"], ["owner", "writer", "reader"]) if criteria and not self._syncing else []
+        names = self.sources(criteria["eq"], ["owner", "writer", "reader"], model) if criteria and not self._syncing else []
 
         if self.local in names:
             names.remove(self.local)
@@ -499,7 +559,7 @@ def journal(source, member):
 
     return type("Journal", (relations.Model,), {
         **{name: value for name, value in vars(relations_unifist.Journal).items() if not name.startswith("_")},
-        "SOURCE": source.members[member]
+        "SOURCE": source.universe()[member]
     })
 
 
