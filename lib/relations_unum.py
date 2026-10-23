@@ -53,6 +53,8 @@ class Clash(relations_unifist.UnifistBase):
     What broke, with the same id as the journal row it's about, version:identifier:resource:owner:writer
     """
 
+    SOURCE = "unum"
+
     id = str
     what = dict, False
 
@@ -83,6 +85,8 @@ class Route(Matching, relations_unifist.UnifistBase):
     Who has the data that matches, in what role, and where to reach them (a url, blank for here)
     """
 
+    SOURCE = "unum"
+
     id = int
     identifier = blank()
     model = blank()
@@ -99,6 +103,8 @@ class Scribe(Matching, relations_unifist.UnifistBase):
     """
     Where a write goes for the data that matches, one row for each match
     """
+
+    SOURCE = "unum"
 
     id = int
     identifier = blank()
