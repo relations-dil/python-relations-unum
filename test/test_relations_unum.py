@@ -118,6 +118,16 @@ class TestModule(unittest.TestCase):
         self.assertEqual(relations_unum.scribe("7:other.remote:home").to, "owner")
 
 
+class TestUnumBase(unittest.TestCase):
+
+    def test_define(self):
+
+        # The Unum source is a plain database: never routed, and its tables never shared
+
+        self.assertTrue(issubclass(relations_unum.UnumBase, relations.Model))
+        self.assertEqual(relations_unum.UnumBase.SOURCE, "unum")
+
+
 class TestClash(unittest.TestCase):
 
     maxDiff = None
@@ -130,7 +140,8 @@ class TestClash(unittest.TestCase):
         # In the Unum source, with the same id as the journal row it's about, version:identifier:resource:owner:writer,
         # so the two go together without another field
 
-        self.assertTrue(issubclass(relations_unum.Clash, relations_unifist.UnifistBase))
+        self.assertTrue(issubclass(relations_unum.Clash, relations_unum.UnumBase))
+        self.assertFalse(issubclass(relations_unum.Clash, (relations_unifist.UnifistBase, relations_unifist.UnifistModel)))
         self.assertEqual(relations_unum.Clash.SOURCE, "unum")
         self.assertEqual(definition["name"], "clash")
         self.assertEqual(definition["id"], "id")
@@ -158,7 +169,8 @@ class TestRoute(unittest.TestCase):
 
         # Who has the data, in what role and where, matched on the parts of a record's id, in the id's order, blank being anything
 
-        self.assertTrue(issubclass(relations_unum.Route, relations_unifist.UnifistBase))
+        self.assertTrue(issubclass(relations_unum.Route, relations_unum.UnumBase))
+        self.assertFalse(issubclass(relations_unum.Route, (relations_unifist.UnifistBase, relations_unifist.UnifistModel)))
         self.assertEqual(relations_unum.Route.SOURCE, "unum")
         self.assertEqual(definition["name"], "route")
         self.assertEqual(definition["id"], "id")
@@ -198,7 +210,8 @@ class TestScribe(unittest.TestCase):
 
         # Where a write goes, matched the same way, one row for each match
 
-        self.assertTrue(issubclass(relations_unum.Scribe, relations_unifist.UnifistBase))
+        self.assertTrue(issubclass(relations_unum.Scribe, relations_unum.UnumBase))
+        self.assertFalse(issubclass(relations_unum.Scribe, (relations_unifist.UnifistBase, relations_unifist.UnifistModel)))
         self.assertEqual(relations_unum.Scribe.SOURCE, "unum")
         self.assertEqual(definition["name"], "scribe")
         self.assertEqual(definition["id"], "id")
