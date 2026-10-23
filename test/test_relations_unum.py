@@ -17,6 +17,7 @@ class TestModule(unittest.TestCase):
     def setUp(self):
 
         self.unifist = relations.unittest.MockSource("unifist")
+        self.unum = relations.unittest.MockSource("unum")
 
     def test_module(self):
 
@@ -26,24 +27,24 @@ class TestModule(unittest.TestCase):
 
         # The clashes a record has, any version and writer, in the clash's id, version:identifier:resource:owner:writer
 
-        self.assertEqual(relations_unum.clashed("1:item.unum:home"), [])
+        self.assertEqual(relations_unum.clashed("1:item.pluribus:home"), [])
 
-        relations_unum.Clash(id="2:1:item.unum:home:away", what={"error": "version"}).create()
-        relations_unum.Clash(id="3:1:item.unum:home:cloud", what={"error": "version"}).create()
-        relations_unum.Clash(id="2:11:item.unum:home:away", what={"error": "missing"}).create()
+        relations_unum.Clash(id="2:1:item.pluribus:home:away", what={"error": "version"}).create()
+        relations_unum.Clash(id="3:1:item.pluribus:home:cloud", what={"error": "version"}).create()
+        relations_unum.Clash(id="2:11:item.pluribus:home:away", what={"error": "missing"}).create()
 
-        self.assertEqual([clash.id for clash in relations_unum.clashed("1:item.unum:home")], [
-            "2:1:item.unum:home:away", "3:1:item.unum:home:cloud"
+        self.assertEqual([clash.id for clash in relations_unum.clashed("1:item.pluribus:home")], [
+            "2:1:item.pluribus:home:away", "3:1:item.pluribus:home:cloud"
         ])
-        self.assertEqual([clash.id for clash in relations_unum.clashed("11:item.unum:home")], ["2:11:item.unum:home:away"])
-        self.assertEqual(relations_unum.clashed("2:item.unum:home"), [])
-        self.assertEqual(relations_unum.clashed("1:item.unum:away"), [])
+        self.assertEqual([clash.id for clash in relations_unum.clashed("11:item.pluribus:home")], ["2:11:item.pluribus:home:away"])
+        self.assertEqual(relations_unum.clashed("2:item.pluribus:home"), [])
+        self.assertEqual(relations_unum.clashed("1:item.pluribus:away"), [])
 
     def test_journal(self):
 
         # Another unum's journal, the same as the one here but in the source that unum's records are in
 
-        source = relations_unum.Source("unum", unum="home", local="local", members={"away": "away"})
+        source = relations_unum.Source("pluribus", unum="home", local="local", members={"away": "away"})
         journal = relations_unum.journal(source, "away")
 
         self.assertEqual(journal.SOURCE, "away")
@@ -58,7 +59,7 @@ class TestModule(unittest.TestCase):
 
         # The models sync can apply, by the app (source) and block (model) a journal row has
 
-        self.assertEqual(relations_unum.models(Item, Owned), {("unum", "item"): Item, ("unum", "owned"): Owned})
+        self.assertEqual(relations_unum.models(Item, Owned), {("pluribus", "item"): Item, ("pluribus", "owned"): Owned})
         self.assertEqual(relations_unum.models(), {})
 
     def test_route(self):
@@ -117,6 +118,16 @@ class TestModule(unittest.TestCase):
         self.assertEqual(relations_unum.scribe("7:other.remote:home").to, "owner")
 
 
+class TestUnumBase(unittest.TestCase):
+
+    def test_define(self):
+
+        # The Unum source is a plain database: never routed, and its tables never shared
+
+        self.assertTrue(issubclass(relations_unum.UnumBase, relations.Model))
+        self.assertEqual(relations_unum.UnumBase.SOURCE, "unum")
+
+
 class TestClash(unittest.TestCase):
 
     maxDiff = None
@@ -126,11 +137,12 @@ class TestClash(unittest.TestCase):
         definition = relations_unum.Clash.thy().define()
         fields = {field["name"]: field for field in definition["fields"]}
 
-        # In the Unifist source with the journal, and with the same id as the journal row it's about,
-        # version:identifier:resource:owner:writer, so the two go together without another field
+        # In the Unum source, with the same id as the journal row it's about, version:identifier:resource:owner:writer,
+        # so the two go together without another field
 
-        self.assertTrue(issubclass(relations_unum.Clash, relations_unifist.UnifistBase))
-        self.assertEqual(relations_unum.Clash.SOURCE, relations_unifist.UnifistBase.SOURCE)
+        self.assertTrue(issubclass(relations_unum.Clash, relations_unum.UnumBase))
+        self.assertFalse(issubclass(relations_unum.Clash, (relations_unifist.UnifistBase, relations_unifist.UnifistModel)))
+        self.assertEqual(relations_unum.Clash.SOURCE, "unum")
         self.assertEqual(definition["name"], "clash")
         self.assertEqual(definition["id"], "id")
         self.assertEqual([field["name"] for field in definition["fields"]], ["id", "what"])
@@ -157,7 +169,9 @@ class TestRoute(unittest.TestCase):
 
         # Who has the data, in what role and where, matched on the parts of a record's id, in the id's order, blank being anything
 
-        self.assertTrue(issubclass(relations_unum.Route, relations_unifist.UnifistBase))
+        self.assertTrue(issubclass(relations_unum.Route, relations_unum.UnumBase))
+        self.assertFalse(issubclass(relations_unum.Route, (relations_unifist.UnifistBase, relations_unifist.UnifistModel)))
+        self.assertEqual(relations_unum.Route.SOURCE, "unum")
         self.assertEqual(definition["name"], "route")
         self.assertEqual(definition["id"], "id")
         self.assertEqual([field["name"] for field in definition["fields"]], [
@@ -196,7 +210,9 @@ class TestScribe(unittest.TestCase):
 
         # Where a write goes, matched the same way, one row for each match
 
-        self.assertTrue(issubclass(relations_unum.Scribe, relations_unifist.UnifistBase))
+        self.assertTrue(issubclass(relations_unum.Scribe, relations_unum.UnumBase))
+        self.assertFalse(issubclass(relations_unum.Scribe, (relations_unifist.UnifistBase, relations_unifist.UnifistModel)))
+        self.assertEqual(relations_unum.Scribe.SOURCE, "unum")
         self.assertEqual(definition["name"], "scribe")
         self.assertEqual(definition["id"], "id")
         self.assertEqual([field["name"] for field in definition["fields"]], [
@@ -220,7 +236,7 @@ class TestScribe(unittest.TestCase):
 
 class Base(relations_unifist.UnifistModel):
 
-    SOURCE = "unum"
+    SOURCE = "pluribus"
 
 
 class Item(Base):
@@ -270,11 +286,12 @@ class TestSource(unittest.TestCase):
     def setUp(self):
 
         self.unifist = relations.unittest.MockSource("unifist")
+        self.unum = relations.unittest.MockSource("unum")
         self.local = relations.unittest.MockSource("local")
         self.away = relations.unittest.MockSource("away")
         self.cloud = relations.unittest.MockSource("cloud")
 
-        self.source = relations_unum.Source("unum", unum="home", local="local", members={"away": "away", "cloud": "cloud"})
+        self.source = relations_unum.Source("pluribus", unum="home", local="local", members={"away": "away", "cloud": "cloud"})
 
         relations_unifist.UnifistModel.UNUM = "home"
 
@@ -323,29 +340,29 @@ class TestSource(unittest.TestCase):
 
         item = Item(name="a").create()
 
-        self.assertEqual(item.id, "1:item.unum:home")
-        self.assertEqual(self.ids(self.local, "item"), ["1:item.unum:home"])
+        self.assertEqual(item.id, "1:item.pluribus:home")
+        self.assertEqual(self.ids(self.local, "item"), ["1:item.pluribus:home"])
         self.assertEqual(self.ids(self.away, "item"), [])
 
         # To its owner, who's away
 
         owned = Owned(name="b").create()
 
-        self.assertEqual(owned.id, "1:owned.unum:home")
+        self.assertEqual(owned.id, "1:owned.pluribus:home")
         self.assertEqual(self.ids(self.local, "owned"), [])
-        self.assertEqual(self.ids(self.away, "owned"), ["1:owned.unum:home"])
+        self.assertEqual(self.ids(self.away, "owned"), ["1:owned.pluribus:home"])
 
         # Or here, when the owner is this unum
 
         Mine(name="c").create()
 
-        self.assertEqual(self.ids(self.local, "mine"), ["1:mine.unum:home"])
+        self.assertEqual(self.ids(self.local, "mine"), ["1:mine.pluribus:home"])
 
         # To the first of its writers
 
         Team(name="d").create()
 
-        self.assertEqual(self.ids(self.away, "team"), ["1:team.unum:home"])
+        self.assertEqual(self.ids(self.away, "team"), ["1:team.pluribus:home"])
         self.assertEqual(self.ids(self.cloud, "team"), [])
 
         # Or the next, if that one is down
@@ -354,7 +371,7 @@ class TestSource(unittest.TestCase):
 
         Team(name="e").create()
 
-        self.assertEqual(self.ids(self.cloud, "team"), ["2:team.unum:home"])
+        self.assertEqual(self.ids(self.cloud, "team"), ["2:team.pluribus:home"])
 
         # Or nothing, if they all are
 
@@ -501,9 +518,9 @@ class TestSource(unittest.TestCase):
         relations_unum.Route(unum="away", model="item", role="owner", holder="away").create()
 
         with self.source.syncing():
-            item = Item(id="5:item.unum:away", name="a").create()
+            item = Item(id="5:item.pluribus:away", name="a").create()
 
-        self.assertEqual(self.ids(self.local, "item"), ["5:item.unum:away"])
+        self.assertEqual(self.ids(self.local, "item"), ["5:item.pluribus:away"])
         self.assertEqual(self.ids(self.away, "item"), [])
 
         with self.source.syncing():
@@ -511,9 +528,9 @@ class TestSource(unittest.TestCase):
 
         # And not after
 
-        Item(id="6:item.unum:away", name="b").create()
+        Item(id="6:item.pluribus:away", name="b").create()
 
-        self.assertEqual(self.ids(self.away, "item"), ["6:item.unum:away"])
+        self.assertEqual(self.ids(self.away, "item"), ["6:item.pluribus:away"])
 
     def fill(self):
 
@@ -526,12 +543,12 @@ class TestSource(unittest.TestCase):
 
         for number, (source, unum) in enumerate([(self.local, "home"), (self.away, "away"), (self.cloud, "cloud")]):
             for position in range(6):
-                id = f"{position + 1}:item.unum:{unum}"
+                id = f"{position + 1}:item.pluribus:{unum}"
                 name = "abcdefghijklmnopqr"[position * 3 + number]
                 source.data["item"][id] = {"id": id, "version": 1, "unum": unum, "name": name}
                 self.rows[name] = id
 
-        self.away.data["item"]["1:item.unum:home"] = {"id": "1:item.unum:home", "version": 1, "unum": "home", "name": "a"}
+        self.away.data["item"]["1:item.pluribus:home"] = {"id": "1:item.pluribus:home", "version": 1, "unum": "home", "name": "a"}
 
     def served(self):
 
@@ -803,6 +820,7 @@ class TestRoutedSource(unittest.TestCase):
     def setUp(self):
 
         self.unifist = relations.unittest.MockSource("unifist")
+        self.unum = relations.unittest.MockSource("unum")
         self.local = relations.unittest.MockSource("local")
 
         self.made = []
@@ -811,7 +829,7 @@ class TestRoutedSource(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-        self.source = relations_unum.Source("unum", unum="home", local="local")
+        self.source = relations_unum.Source("pluribus", unum="home", local="local")
 
         relations_unifist.UnifistModel.UNUM = "home"
 
@@ -836,7 +854,7 @@ class TestRoutedSource(unittest.TestCase):
     def fill(self, source, unum, count):
 
         for position in range(count):
-            id = f"{position + 1}:item.unum:{unum}"
+            id = f"{position + 1}:item.pluribus:{unum}"
             source.data["item"][id] = {"id": id, "version": 1, "unum": unum, "name": f"{unum}{position + 1}"}
 
     def test_holders(self):
@@ -852,8 +870,8 @@ class TestRoutedSource(unittest.TestCase):
         relations_unum.Route(unum="home", model="item", role="writer", holder="away", url="http://elsewhere").create()
         relations_unum.Route(unum="home", model="item", role="reader", holder="cloud", url="http://cloud").create()
 
-        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve()), {"away": "unum-away", "cloud": "unum-cloud"})
-        self.assertEqual(self.made, [("unum-away", "http://away"), ("unum-cloud", "http://cloud")])
+        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve()), {"away": "pluribus-away", "cloud": "pluribus-cloud"})
+        self.assertEqual(self.made, [("pluribus-away", "http://away"), ("pluribus-cloud", "http://cloud")])
 
         # Not made again for the next request
 
@@ -867,9 +885,9 @@ class TestRoutedSource(unittest.TestCase):
         route.url = "http://moved"
         route.update()
 
-        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["away"], "unum-away")
-        self.assertEqual(self.made[-1], ("unum-away", "http://moved"))
-        self.assertEqual(relations.source("unum-away").reached, "http://moved")
+        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["away"], "pluribus-away")
+        self.assertEqual(self.made[-1], ("pluribus-away", "http://moved"))
+        self.assertEqual(relations.source("pluribus-away").reached, "http://moved")
 
         # Rows with no url, or this unum as the holder, are no one to reach
 
@@ -886,7 +904,7 @@ class TestRoutedSource(unittest.TestCase):
         self.source.members = {"away": "static"}
 
         self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["away"], "static")
-        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["cloud"], "unum-cloud")
+        self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["cloud"], "pluribus-cloud")
 
     def test_universe(self):
 
@@ -900,20 +918,20 @@ class TestRoutedSource(unittest.TestCase):
         relations_unum.Route(unum="cloud", model="item", role="owner", holder="cloud", url="http://cloud").create()
         relations_unum.Route(unum="mid", role="reader", holder="mid", url="http://mid").create()
 
-        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away"})
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "pluribus-away"})
 
         # Who holds it isn't who it is, so a unum can be held by another
 
         relations_unum.Route(unum="gone", role="owner", holder="away").create()
 
-        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away", "gone": "unum-away"})
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "pluribus-away", "gone": "pluribus-away"})
 
         # A holder that can't be reached holds nothing, and this unum holds its own
 
         relations_unum.Route(unum="lost", role="owner", holder="nowhere").create()
         relations_unum.Route(unum="mine", role="owner", holder="home", url="http://home").create()
 
-        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away", "gone": "unum-away"})
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "pluribus-away", "gone": "pluribus-away"})
 
         # The members this was made with are there too, and win
 
@@ -934,32 +952,32 @@ class TestRoutedSource(unittest.TestCase):
 
         self.member("away")
 
-        self.assertEqual(self.source.universe(), {"home": "local", "away": "unum-away"})
-        self.assertNotIn("item", relations.source("unum-away").data)
+        self.assertEqual(self.source.universe(), {"home": "local", "away": "pluribus-away"})
+        self.assertNotIn("item", relations.source("pluribus-away").data)
 
         # A model made after is told to the one made for the row
 
         Owned()
 
         self.assertEqual(self.local.data["owned"], {})
-        self.assertEqual(relations.source("unum-away").data["owned"], {})
+        self.assertEqual(relations.source("pluribus-away").data["owned"], {})
 
         # And one made while a model that was made before it is used is told about that model alone
 
         self.member("cloud")
 
-        item = Item.one("1:item.unum:cloud")
-        self.source.sources("1:item.unum:cloud", ["owner"], item)
+        item = Item.one("1:item.pluribus:cloud")
+        self.source.sources("1:item.pluribus:cloud", ["owner"], item)
 
-        self.assertEqual(relations.source("unum-cloud").data["item"], {})
-        self.assertNotIn("owned", relations.source("unum-cloud").data)
+        self.assertEqual(relations.source("pluribus-cloud").data["item"], {})
+        self.assertNotIn("owned", relations.source("pluribus-cloud").data)
 
     def test_many(self):
 
         self.member("away")
         self.source.universe()
         Item()
-        away = relations.source("unum-away")
+        away = relations.source("pluribus-away")
 
         self.fill(self.local, "home", 2)
         self.fill(away, "away", 3)
@@ -987,23 +1005,23 @@ class TestRoutedSource(unittest.TestCase):
         self.member("away")
         self.source.universe()
         Item()
-        self.fill(relations.source("unum-away"), "away", 1)
+        self.fill(relations.source("pluribus-away"), "away", 1)
         self.fill(self.local, "home", 1)
 
-        self.assertEqual(Item.one("1:item.unum:away").retrieve().name, "away1")
-        self.assertEqual(Item.one("1:item.unum:home").retrieve().name, "home1")
+        self.assertEqual(Item.one("1:item.pluribus:away").retrieve().name, "away1")
+        self.assertEqual(Item.one("1:item.pluribus:home").retrieve().name, "home1")
 
         # A record of a unum with no row is looked for here, and isn't there
 
         with self.assertRaises(relations.NotFoundError):
-            Item.one("1:item.unum:cloud").retrieve()
+            Item.one("1:item.pluribus:cloud").retrieve()
 
         # A route to a holder there's no way to reach is an error, not here
 
         relations_unum.Route(unum="home", model="item", role="owner", holder="nowhere").create()
 
         with self.assertRaises(KeyError):
-            Item.one("1:item.unum:home").retrieve()
+            Item.one("1:item.pluribus:home").retrieve()
 
     def test_journal(self):
 
@@ -1013,7 +1031,7 @@ class TestRoutedSource(unittest.TestCase):
 
         journal = relations_unum.journal(self.source, "away")
 
-        self.assertEqual(journal.SOURCE, "unum-away")
+        self.assertEqual(journal.SOURCE, "pluribus-away")
 
 
 class TestApply(unittest.TestCase):
@@ -1023,10 +1041,11 @@ class TestApply(unittest.TestCase):
     def setUp(self):
 
         self.unifist = relations.unittest.MockSource("unifist")
+        self.unum = relations.unittest.MockSource("unum")
         self.local = relations.unittest.MockSource("local")
         self.away = relations.unittest.MockSource("away")
 
-        self.source = relations_unum.Source("unum", unum="home", local="local", members={"away": "away"})
+        self.source = relations_unum.Source("pluribus", unum="home", local="local", members={"away": "away"})
         self.models = relations_unum.models(Item)
 
         relations_unifist.UnifistModel.UNUM = "home"
@@ -1042,8 +1061,8 @@ class TestApply(unittest.TestCase):
 
     def row(self, id, action, **what):
 
-        return {"id": id, "resource_id": "5:item.unum:away", "what": {
-            "action": action, "app": "unum", "block": "item", "id": "5:item.unum:away", **what
+        return {"id": id, "resource_id": "5:item.pluribus:away", "what": {
+            "action": action, "app": "pluribus", "block": "item", "id": "5:item.pluribus:away", **what
         }}
 
     def journal(self):
@@ -1052,40 +1071,40 @@ class TestApply(unittest.TestCase):
 
     def clashes(self):
 
-        return {id: row["what"] for id, row in self.unifist.data["clash"].items()}
+        return {id: row["what"] for id, row in self.unum.data["clash"].items()}
 
     def test_apply(self):
 
-        created = self.row("1:5:item.unum:away:away", "create", after={"id": "5:item.unum:away", "version": 1, "name": "a"})
-        updated = self.row("2:5:item.unum:away:away", "update",
-            before={"id": "5:item.unum:away", "version": 1, "name": "a"}, after={"id": "5:item.unum:away", "version": 2, "name": "b"})
-        deleted = self.row("3:5:item.unum:away:away", "delete", before={"id": "5:item.unum:away", "version": 2, "name": "b"})
+        created = self.row("1:5:item.pluribus:away:away", "create", after={"id": "5:item.pluribus:away", "version": 1, "name": "a"})
+        updated = self.row("2:5:item.pluribus:away:away", "update",
+            before={"id": "5:item.pluribus:away", "version": 1, "name": "a"}, after={"id": "5:item.pluribus:away", "version": 2, "name": "b"})
+        deleted = self.row("3:5:item.pluribus:away:away", "delete", before={"id": "5:item.pluribus:away", "version": 2, "name": "b"})
 
         # A create is made here, not to the owner, and its journal row is the one it came with, so the transaction is the same
 
         self.assertEqual(relations_unum.apply(self.source, created, self.models), "applied")
-        self.assertEqual(self.local.data["item"]["5:item.unum:away"]["name"], "a")
+        self.assertEqual(self.local.data["item"]["5:item.pluribus:away"]["name"], "a")
         self.assertEqual(self.away.data["item"], {})
-        self.assertEqual(self.journal(), ["1:5:item.unum:away:away"])
+        self.assertEqual(self.journal(), ["1:5:item.pluribus:away:away"])
 
         # An update too, from the version it was
 
         self.assertEqual(relations_unum.apply(self.source, updated, self.models), "applied")
-        self.assertEqual(self.local.data["item"]["5:item.unum:away"]["name"], "b")
-        self.assertEqual(self.local.data["item"]["5:item.unum:away"]["version"], 2)
-        self.assertEqual(self.journal(), ["1:5:item.unum:away:away", "2:5:item.unum:away:away"])
+        self.assertEqual(self.local.data["item"]["5:item.pluribus:away"]["name"], "b")
+        self.assertEqual(self.local.data["item"]["5:item.pluribus:away"]["version"], 2)
+        self.assertEqual(self.journal(), ["1:5:item.pluribus:away:away", "2:5:item.pluribus:away:away"])
 
         # One that's already here is skipped, whatever it was, so syncing twice does nothing
 
         self.assertEqual(relations_unum.apply(self.source, created, self.models), "skipped")
         self.assertEqual(relations_unum.apply(self.source, updated, self.models), "skipped")
-        self.assertEqual(self.local.data["item"]["5:item.unum:away"]["version"], 2)
+        self.assertEqual(self.local.data["item"]["5:item.pluribus:away"]["version"], 2)
 
         # As is a delete
 
         self.assertEqual(relations_unum.apply(self.source, deleted, self.models), "applied")
         self.assertEqual(self.local.data["item"], {})
-        self.assertEqual(self.journal()[2], "3:5:item.unum:away:away")
+        self.assertEqual(self.journal()[2], "3:5:item.pluribus:away:away")
 
         # Nothing broke
 
@@ -1094,17 +1113,17 @@ class TestApply(unittest.TestCase):
         # An update from a version it isn't at is a clash, and the record is left as it is. So is a delete
 
         with self.source.syncing():
-            Item(id="6:item.unum:away", name="c").create()
-            Item.many(id="6:item.unum:away").set(name="d").update()
+            Item(id="6:item.pluribus:away", name="c").create()
+            Item.many(id="6:item.pluribus:away").set(name="d").update()
 
-        stale = self.row("2:6:item.unum:away:cloud", "update",
-            before={"id": "6:item.unum:away", "version": 1, "name": "c"}, after={"id": "6:item.unum:away", "version": 2, "name": "e"})
-        stale["what"]["id"] = "6:item.unum:away"
-        late = self.row("2:6:item.unum:away:cloud", "delete", before={"id": "6:item.unum:away", "version": 1, "name": "c"})
+        stale = self.row("2:6:item.pluribus:away:cloud", "update",
+            before={"id": "6:item.pluribus:away", "version": 1, "name": "c"}, after={"id": "6:item.pluribus:away", "version": 2, "name": "e"})
+        stale["what"]["id"] = "6:item.pluribus:away"
+        late = self.row("2:6:item.pluribus:away:cloud", "delete", before={"id": "6:item.pluribus:away", "version": 1, "name": "c"})
 
         self.assertEqual(relations_unum.apply(self.source, stale, self.models), "clash")
-        self.assertEqual(self.local.data["item"]["6:item.unum:away"]["name"], "d")
-        self.assertEqual(self.clashes(), {"2:6:item.unum:away:cloud": {"error": "version"}})
+        self.assertEqual(self.local.data["item"]["6:item.pluribus:away"]["name"], "d")
+        self.assertEqual(self.clashes(), {"2:6:item.pluribus:away:cloud": {"error": "version"}})
 
         # Once it's a clash it's left alone, until someone sorts it out
 
@@ -1113,32 +1132,32 @@ class TestApply(unittest.TestCase):
 
         # Changing a record that isn't here is one too
 
-        gone = self.row("2:7:item.unum:away:away", "update",
-            before={"id": "7:item.unum:away", "version": 1, "name": "f"}, after={"id": "7:item.unum:away", "version": 2, "name": "g"})
-        gone["what"]["id"] = "7:item.unum:away"
+        gone = self.row("2:7:item.pluribus:away:away", "update",
+            before={"id": "7:item.pluribus:away", "version": 1, "name": "f"}, after={"id": "7:item.pluribus:away", "version": 2, "name": "g"})
+        gone["what"]["id"] = "7:item.pluribus:away"
 
         self.assertEqual(relations_unum.apply(self.source, gone, self.models), "clash")
-        self.assertEqual(self.clashes()["2:7:item.unum:away:away"], {"error": "missing"})
+        self.assertEqual(self.clashes()["2:7:item.pluribus:away:away"], {"error": "missing"})
 
         # And so is making one that is
 
         with self.source.syncing():
-            Item(id="8:item.unum:away", name="h").create()
+            Item(id="8:item.pluribus:away", name="h").create()
 
-        twice = self.row("1:8:item.unum:away:cloud", "create", after={"id": "8:item.unum:away", "version": 1, "name": "i"})
-        twice["what"]["id"] = "8:item.unum:away"
+        twice = self.row("1:8:item.pluribus:away:cloud", "create", after={"id": "8:item.pluribus:away", "version": 1, "name": "i"})
+        twice["what"]["id"] = "8:item.pluribus:away"
 
         self.assertEqual(relations_unum.apply(self.source, twice, self.models), "clash")
-        self.assertEqual(self.clashes()["1:8:item.unum:away:cloud"], {"error": "exists"})
-        self.assertEqual(self.local.data["item"]["8:item.unum:away"]["name"], "h")
+        self.assertEqual(self.clashes()["1:8:item.pluribus:away:cloud"], {"error": "exists"})
+        self.assertEqual(self.local.data["item"]["8:item.pluribus:away"]["name"], "h")
 
         # Or a model that isn't known
 
-        unknown = self.row("1:9:nope.unum:away:away", "create", after={"id": "9:nope.unum:away", "version": 1})
+        unknown = self.row("1:9:nope.pluribus:away:away", "create", after={"id": "9:nope.pluribus:away", "version": 1})
         unknown["what"]["block"] = "nope"
 
         self.assertEqual(relations_unum.apply(self.source, unknown, self.models), "clash")
-        self.assertEqual(self.clashes()["1:9:nope.unum:away:away"], {"error": "model"})
+        self.assertEqual(self.clashes()["1:9:nope.pluribus:away:away"], {"error": "model"})
 
 
 class TestSync(unittest.TestCase):
@@ -1148,10 +1167,11 @@ class TestSync(unittest.TestCase):
     def setUp(self):
 
         self.unifist = relations.unittest.MockSource("unifist")
+        self.unum = relations.unittest.MockSource("unum")
         self.local = relations.unittest.MockSource("local")
         self.away = relations.unittest.MockSource("away")
 
-        self.source = relations_unum.Source("unum", unum="home", local="local", members={"away": "away"})
+        self.source = relations_unum.Source("pluribus", unum="home", local="local", members={"away": "away"})
         self.models = relations_unum.models(Item)
         self.journal = relations_unum.journal(self.source, "away")
 
@@ -1163,23 +1183,23 @@ class TestSync(unittest.TestCase):
 
     def write(self, transaction, when, action, **what):
 
-        self.journal(id=transaction, resource_id=what["id"], when=when, what={"action": action, "app": "unum", "block": "item", **what}).create()
+        self.journal(id=transaction, resource_id=what["id"], when=when, what={"action": action, "app": "pluribus", "block": "item", **what}).create()
 
     def test_sync(self):
 
-        five = "5:item.unum:away"
-        six = "6:item.unum:away"
+        five = "5:item.pluribus:away"
+        six = "6:item.pluribus:away"
 
         # What away has written, put in out of order, to be applied by when. Record 5 is made, changed and deleted, record 6
         # is made, and then changed by someone else from a version it isn't at
 
-        self.write("3:5:item.unum:away:away", 30, "delete", id=five, before={"id": five, "version": 2, "name": "b"})
-        self.write("2:6:item.unum:away:cloud", 25, "update", id=six,
+        self.write("3:5:item.pluribus:away:away", 30, "delete", id=five, before={"id": five, "version": 2, "name": "b"})
+        self.write("2:6:item.pluribus:away:cloud", 25, "update", id=six,
             before={"id": six, "version": 5, "name": "c"}, after={"id": six, "version": 6, "name": "d"})
-        self.write("2:5:item.unum:away:away", 20, "update", id=five,
+        self.write("2:5:item.pluribus:away:away", 20, "update", id=five,
             before={"id": five, "version": 1, "name": "a"}, after={"id": five, "version": 2, "name": "b"})
-        self.write("1:6:item.unum:away:away", 15, "create", id=six, after={"id": six, "version": 1, "name": "c"})
-        self.write("1:5:item.unum:away:away", 10, "create", id=five, after={"id": five, "version": 1, "name": "a"})
+        self.write("1:6:item.pluribus:away:away", 15, "create", id=six, after={"id": six, "version": 1, "name": "c"})
+        self.write("1:5:item.pluribus:away:away", 10, "create", id=five, after={"id": five, "version": 1, "name": "a"})
 
         # They're applied in order, to the copies here, and the journal here has the same rows
 
@@ -1189,19 +1209,19 @@ class TestSync(unittest.TestCase):
         self.assertEqual(self.local.data["item"][six]["name"], "c")
         self.assertEqual(self.away.data["item"], {})
         self.assertEqual(list(self.unifist.data["journal"]), [
-            "1:5:item.unum:away:away", "1:6:item.unum:away:away", "2:5:item.unum:away:away", "3:5:item.unum:away:away"
+            "1:5:item.pluribus:away:away", "1:6:item.pluribus:away:away", "2:5:item.pluribus:away:away", "3:5:item.pluribus:away:away"
         ])
-        self.assertEqual({id: row["what"] for id, row in self.unifist.data["clash"].items()}, {"2:6:item.unum:away:cloud": {"error": "version"}})
+        self.assertEqual({id: row["what"] for id, row in self.unum.data["clash"].items()}, {"2:6:item.pluribus:away:cloud": {"error": "version"}})
 
         # Again, it's all done already
 
         self.assertEqual(relations_unum.sync(self.source, "away", self.models), {"applied": 0, "skipped": 4, "clash": 1})
         self.assertEqual(len(self.unifist.data["journal"]), 4)
-        self.assertEqual(len(self.unifist.data["clash"]), 1)
+        self.assertEqual(len(self.unum.data["clash"]), 1)
 
         # New rows since are applied, and the rest aren't
 
-        self.write("2:6:item.unum:away:away", 40, "update", id=six,
+        self.write("2:6:item.pluribus:away:away", 40, "update", id=six,
             before={"id": six, "version": 1, "name": "c"}, after={"id": six, "version": 2, "name": "e"})
 
         self.assertEqual(relations_unum.sync(self.source, "away", self.models), {"applied": 1, "skipped": 4, "clash": 1})

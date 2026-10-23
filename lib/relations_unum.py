@@ -48,9 +48,19 @@ class ClashError(relations.ModelError):
     """
 
 
-class Clash(relations_unifist.UnifistBase):
+class UnumBase(relations.Model):
     """
-    What broke, with the same id as the journal row it's about, version:identifier:resource:owner:writer
+    The base of the tables kept in the Unum source, a plain database that is never routed and never shared, so
+    these are not Unifist models: no ids made, no versions, no journal
+    """
+
+    SOURCE = "unum"
+
+
+class Clash(UnumBase):
+    """
+    What broke, with the same id as the journal row it's about, version:identifier:resource:owner:writer. Works
+    like the journal: it holds what should be in the journal but can't be yet
     """
 
     id = str
@@ -78,7 +88,7 @@ class Matching:
         return f"{self.identifier or '*'}:{self.model or '*'}.{self.source or '*'}:{self.unum or '*'}"
 
 
-class Route(Matching, relations_unifist.UnifistBase):
+class Route(Matching, UnumBase):
     """
     Who has the data that matches, in what role, and where to reach them (a url, blank for here)
     """
@@ -95,7 +105,7 @@ class Route(Matching, relations_unifist.UnifistBase):
     UNIQUE = ["identifier", "model", "source", "unum", "role", "holder"]
 
 
-class Scribe(Matching, relations_unifist.UnifistBase):
+class Scribe(Matching, UnumBase):
     """
     Where a write goes for the data that matches, one row for each match
     """
