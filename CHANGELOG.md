@@ -6,7 +6,7 @@ All notable changes to python-relations-unum are recorded here, newest first. Fo
 ## [0.4.1] - 2026-10-23
 
 ### Changed
-- `Route`, `Scribe` and `Clash` are in the `unum` source, not `unifist`, so their tables are in the `unum` schema, where the app that owns them has them (unum-apps/unifist-unum#3). The app needs a source of that name for them, and a routed `Source` can't have it as its own name, as the rows that route it are read from there. `Sequence`, `Slug` and `Journal` stay in `unifist`.
+- `Route`, `Scribe` and `Clash` are in the `unum` source, not `unifist`, so their tables are in the `unum` schema, where the app that owns them has them (unum-apps/unifist-unum#3). The `unifist` and `unum` sources are always straight databases and never routed: the app has a plain source of each name, and a routed `Source` takes another name (`app` in the tests), as the rows that route it are read from `unum`. `Sequence`, `Slug` and `Journal` stay in `unifist`.
 
 ## [0.4.0] - 2026-10-22
 
