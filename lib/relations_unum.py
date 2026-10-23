@@ -59,7 +59,8 @@ class UnumBase(relations.Model):
 
 class Clash(UnumBase):
     """
-    What broke, with the same id as the journal row it's about, version:identifier:resource:owner:writer
+    What broke, with the same id as the journal row it's about, version:identifier:resource:owner:writer. Works
+    like the journal: it holds what should be in the journal but can't be yet
     """
 
     id = str
