@@ -4,7 +4,10 @@ import unittest.mock
 import relations
 import relations.unittest
 
+import relations_mysql
+import relations_postgresql
 import relations_rest
+import relations_sqlite
 import relations_unifist
 
 import relations_unum
@@ -128,6 +131,89 @@ class TestUnumBase(unittest.TestCase):
         self.assertEqual(relations_unum.UnumBase.SOURCE, "unum")
 
 
+class TestLengths(unittest.TestCase):
+
+    maxDiff = None
+
+    KEYS = {
+        relations_unum.Route: ["identifier", "model", "source", "unum", "role", "holder"],
+        relations_unum.Scribe: ["identifier", "model", "source", "unum"]
+    }
+
+    def create(self, dialect, model):
+
+        ddl = dialect.TABLE(**model.thy().define())
+        ddl.args = []
+        ddl.create()
+
+        return ddl.sql
+
+    def test_key(self):
+
+        # MySQL's keys are 3072 bytes at most, 4 for each character of utf8mb4, so a key of strings that are 255 long
+        # (the default) doesn't create (1071), as Route's and Scribe's didn't
+
+        for model, key in self.KEYS.items():
+
+            fields = {field["name"]: field for field in model.thy().define()["fields"]}
+            characters = sum(fields[name].get("length") or 255 for name in key)
+
+            self.assertLessEqual(characters * 4, 3072, model.__name__)
+
+    def test_mysql(self):
+
+        # The columns are as long as their lengths, the identifier and the url being the default
+
+        route = self.create(relations_mysql, relations_unum.Route)
+
+        for name in ["model", "source", "unum", "role", "holder"]:
+            self.assertIn(f"`{name}` VARCHAR(64)", route)
+
+        self.assertIn("`identifier` VARCHAR(255)", route)
+        self.assertIn("`url` VARCHAR(255)", route)
+
+        scribe = self.create(relations_mysql, relations_unum.Scribe)
+
+        for name in ["model", "source", "unum"]:
+            self.assertIn(f"`{name}` VARCHAR(64)", scribe)
+
+        self.assertIn("`identifier` VARCHAR(255)", scribe)
+
+    def test_postgresql(self):
+
+        route = self.create(relations_postgresql, relations_unum.Route)
+
+        for name in ["model", "source", "unum", "role", "holder"]:
+            self.assertIn(f'"{name}" VARCHAR(64)', route)
+
+        self.assertIn('"identifier" VARCHAR(255)', route)
+
+        scribe = self.create(relations_postgresql, relations_unum.Scribe)
+
+        for name in ["model", "source", "unum"]:
+            self.assertIn(f'"{name}" VARCHAR(64)', scribe)
+
+        self.assertIn('"identifier" VARCHAR(255)', scribe)
+
+    def test_sqlite(self):
+
+        # SQLite doesn't keep the length of a type, so it's a check on the column
+
+        route = self.create(relations_sqlite, relations_unum.Route)
+
+        for name in ["model", "source", "unum", "role", "holder"]:
+            self.assertIn(f"CHECK (length(`{name}`) <= 64)", route)
+
+        self.assertNotIn("length(`identifier`)", route)
+
+        scribe = self.create(relations_sqlite, relations_unum.Scribe)
+
+        for name in ["model", "source", "unum"]:
+            self.assertIn(f"CHECK (length(`{name}`) <= 64)", scribe)
+
+        self.assertNotIn("length(`identifier`)", scribe)
+
+
 class TestClash(unittest.TestCase):
 
     maxDiff = None
@@ -185,6 +271,16 @@ class TestRoute(unittest.TestCase):
 
         self.assertEqual(fields["role"]["options"], ["owner", "writer", "reader"])
         self.assertFalse(fields["holder"]["none"])
+
+        # Every part of the key but the identifier is 64 long, so the key fits in MySQL, the identifier and the url
+        # being what a string holds
+
+        for name in ["model", "source", "unum", "role", "holder"]:
+            self.assertEqual(fields[name]["length"], 64)
+
+        for name in ["identifier", "url"]:
+            self.assertIsNone(fields[name].get("length"))
+
         self.assertEqual(definition["unique"], {"identifier-model-source-unum-role-holder": [
             "identifier", "model", "source", "unum", "role", "holder"
         ]})
@@ -225,6 +321,13 @@ class TestScribe(unittest.TestCase):
             self.assertFalse(fields[name]["none"])
 
         self.assertEqual(fields["to"]["options"], ["owner", "writer", "local"])
+
+        # The same lengths as Route's, the identifier being what a string holds
+
+        for name in ["model", "source", "unum"]:
+            self.assertEqual(fields[name]["length"], 64)
+
+        self.assertIsNone(fields["identifier"].get("length"))
         self.assertEqual(definition["unique"], {"identifier-model-source-unum": ["identifier", "model", "source", "unum"]})
 
     def test_pattern(self):
