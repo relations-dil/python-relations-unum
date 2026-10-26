@@ -102,7 +102,7 @@ class Route(Matching, UnumBase):
     model = blank(LENGTH)
     source = blank(LENGTH)
     unum = blank(LENGTH)
-    role = ["owner", "writer", "reader"], {"length": LENGTH}
+    role = relations.Field(str, default="owner", options=["owner", "writer", "reader"], length=LENGTH)
     holder = str, False, {"length": LENGTH}
     url = blank()
 
