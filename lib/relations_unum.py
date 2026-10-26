@@ -445,6 +445,21 @@ class Source(relations.Source):
 
         return self.attempt(names or [self.local], "retrieve", model, *args, **kwargs)
 
+    def titles(self, model, *args, **kwargs):
+        """
+        The titles of what's retrieved, which is retrieved from where it would be anyway
+        """
+
+        if model._action == "retrieve": # pylint: disable=protected-access
+            self.retrieve(model, *args, **kwargs)
+
+        titles = relations.Titles(model)
+
+        for titling in model._each(): # pylint: disable=protected-access
+            titles.add(titling)
+
+        return titles
+
     def refuse(self, model, force):
         """
         Refuses a record that clashed, unless it's said to use it anyway, or it's sync that's writing
