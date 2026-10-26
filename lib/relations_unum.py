@@ -34,12 +34,16 @@ class Ordered:
         return False
 
 
-def blank():
+LENGTH = 64  # How long what's matched on is, so the keys of Route and Scribe fit in what a database allows (MySQL's 3072 bytes)
+
+
+def blank(length=None):
     """
-    A string column that is never None, blank meaning any when it's matched
+    A string column that is never None, blank meaning any when it's matched, as long as the length says, a
+    string's own when there isn't one
     """
 
-    return relations.Field(str, default="", none=False)
+    return relations.Field(str, default="", none=False, length=length)
 
 
 class ClashError(relations.ModelError):
@@ -95,11 +99,11 @@ class Route(Matching, UnumBase):
 
     id = int
     identifier = blank()
-    model = blank()
-    source = blank()
-    unum = blank()
-    role = ["owner", "writer", "reader"]
-    holder = str, False
+    model = blank(LENGTH)
+    source = blank(LENGTH)
+    unum = blank(LENGTH)
+    role = ["owner", "writer", "reader"], {"length": LENGTH}
+    holder = str, False, {"length": LENGTH}
     url = blank()
 
     UNIQUE = ["identifier", "model", "source", "unum", "role", "holder"]
@@ -112,9 +116,9 @@ class Scribe(Matching, UnumBase):
 
     id = int
     identifier = blank()
-    model = blank()
-    source = blank()
-    unum = blank()
+    model = blank(LENGTH)
+    source = blank(LENGTH)
+    unum = blank(LENGTH)
     to = ["owner", "writer", "local"]
 
     UNIQUE = ["identifier", "model", "source", "unum"]

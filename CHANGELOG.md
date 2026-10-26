@@ -3,6 +3,14 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+## [0.4.2] - 2026-10-26
+
+### Fixed
+- `Route` and `Scribe` create in MySQL. Their keys were of strings 255 long, 6120 bytes for `Route` and 4080 for `Scribe` in utf8mb4, over what MySQL allows (3072), so the tables failed to create with 1071 (Specified key was too long) and left a migration that said it was done. `model`, `source`, `unum`, `role` and `holder` are 64 long, the identifier staying a string's own, so the keys are 2300 bytes and 1788 (relations-dil/python-relations-unum#17). It takes relations-mysql 0.6.6, relations-postgresql 0.6.5 and relations-sqlite 0.6.5, which make a column as long as its `length` says (a check on the column for SQLite).
+- The columns are tested in the dialects: the lengths of the columns, and that the keys fit in MySQL's limit.
+
 ## [0.4.1] - 2026-10-23
 
 ### Changed
