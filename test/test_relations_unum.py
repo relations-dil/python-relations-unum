@@ -691,6 +691,22 @@ class TestSource(unittest.TestCase):
 
         self.assertEqual([row.name for row in self.source.stream("away", Item.many(name__in=["b", "k", "q"]).sort("-name"), ["-name"])], ["q", "k", "b"])
 
+    def test_titles(self):
+
+        # The titles of what's retrieved, from here when that's where the records are
+
+        Item(name="a").create()
+        Item(name="b").create()
+
+        self.assertEqual(Item.many().titles().ids, ["1:item.pluribus:home", "2:item.pluribus:home"])
+
+        # From its owner, when that's where it is
+
+        owned = Owned(name="c").create()
+
+        self.assertEqual(self.ids(self.local, "owned"), [])
+        self.assertEqual(Owned.one(owned.id).titles().ids, [owned.id])
+
     def test_select(self):
 
         self.fill()

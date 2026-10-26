@@ -3,6 +3,11 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.4.3] - 2026-10-26
+
+### Fixed
+- `Source` forwards `titles`, retrieved from where the records are like any retrieve, so `relations_restx` finds the titles of a parent on a routed source instead of getting `None` and failing the GET with a 500 (relations-dil/python-relations-unum#20).
+
 ## [0.4.2] - 2026-10-26
 
 ### Fixed
