@@ -3,6 +3,11 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.5.0] - 2026-10-28
+
+### Changed
+- A record's `unum` field is `home` (relations-unifist 0.5.0), so a query names the unums it is for with `home`, which `Source.named` and `Source.scoped` read, and a model with a relation named `unum` can't take that filter for itself. `Route` and `Scribe` match a record's `home`, not a `unum`, so a row reads `home=us, holder=us`; their `UNIQUE` keys, `pattern()` and `matching()` follow. `unum` stays where it means a unum itself: `holder`, `Source.unum`, `members`. It needs relations-dil 0.7.0, which relations-unifist does. The `route` and `scribe` tables of a database made before have their `unum` column renamed `home` (relations-dil/python-relations-unifist#17).
+
 ## [0.4.3] - 2026-10-26
 
 ### Fixed

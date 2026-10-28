@@ -73,7 +73,7 @@ class Clash(UnumBase):
 
 class Matching:
     """
-    What Route and Scribe share, matching a record's id on its parts (identifier, model, source and unum), blank
+    What Route and Scribe share, matching a record's id on its parts (identifier, model, source and home), blank
     meaning any
     """
 
@@ -82,14 +82,14 @@ class Matching:
         How many of the parts are set, the more the more it matches
         """
 
-        return sum(1 for part in [self.identifier, self.model, self.source, self.unum] if part)
+        return sum(1 for part in [self.identifier, self.model, self.source, self.home] if part)
 
     def pattern(self):
         """
         Shown like a record's id, with a * for any, though a blank is what's kept
         """
 
-        return f"{self.identifier or '*'}:{self.model or '*'}.{self.source or '*'}:{self.unum or '*'}"
+        return f"{self.identifier or '*'}:{self.model or '*'}.{self.source or '*'}:{self.home or '*'}"
 
 
 class Route(Matching, UnumBase):
@@ -101,12 +101,12 @@ class Route(Matching, UnumBase):
     identifier = blank()
     model = blank(LENGTH)
     source = blank(LENGTH)
-    unum = blank(LENGTH)
+    home = blank(LENGTH)
     role = relations.Field(str, default="owner", options=["owner", "writer", "reader"], length=LENGTH)
     holder = str, False, {"length": LENGTH}
     url = blank()
 
-    UNIQUE = ["identifier", "model", "source", "unum", "role", "holder"]
+    UNIQUE = ["identifier", "model", "source", "home", "role", "holder"]
 
 
 class Scribe(Matching, UnumBase):
@@ -118,10 +118,10 @@ class Scribe(Matching, UnumBase):
     identifier = blank()
     model = blank(LENGTH)
     source = blank(LENGTH)
-    unum = blank(LENGTH)
+    home = blank(LENGTH)
     to = ["owner", "writer", "local"]
 
-    UNIQUE = ["identifier", "model", "source", "unum"]
+    UNIQUE = ["identifier", "model", "source", "home"]
 
 
 def clashed(record_id):
@@ -135,21 +135,21 @@ def clashed(record_id):
 
 def matching(kind, record_id):
     """
-    The rows of a kind (Route or Scribe) that match a record's id, which is identifier:model.source:unum
+    The rows of a kind (Route or Scribe) that match a record's id, which is identifier:model.source:home
     """
 
-    identifier, resource, unum = record_id.split(":", 2)
+    identifier, resource, home = record_id.split(":", 2)
     model, source = resource.split(".", 1)
 
     return list(kind.many(
-        identifier__in=["", identifier], model__in=["", model], source__in=["", source], unum__in=["", unum]
+        identifier__in=["", identifier], model__in=["", model], source__in=["", source], home__in=["", home]
     ).retrieve())
 
 
 def route(record_id):
     """
     Who has a record's data, in whatever role. For each role the rows that match the most win, so what a
-    model or a record says beats what its unum says. Owners, then writers, then readers, each in the order made
+    model or a record says beats what its home says. Owners, then writers, then readers, each in the order made
     """
 
     roles = ["owner", "writer", "reader"]
@@ -295,19 +295,19 @@ class Source(relations.Source):
             found.setdefault(unum, name)
 
         for row in rows:
-            if row.role == "owner" and row.unum and not (row.identifier or row.model or row.source) and row.holder in holders:
-                found.setdefault(row.unum, holders[row.holder])
+            if row.role == "owner" and row.home and not (row.identifier or row.model or row.source) and row.holder in holders:
+                found.setdefault(row.home, holders[row.holder])
 
         return found
 
     @staticmethod
     def named(model):
         """
-        The unums a query names with its unum criteria, both eq and in having to be satisfied, or None if it
-        names none
+        The unums a query names with its home criteria, both eq and in having to be satisfied, or None if it names
+        none
         """
 
-        criteria = model._record._names["unum"].criteria or {} # pylint: disable=protected-access
+        criteria = model._record._names["home"].criteria or {} # pylint: disable=protected-access
         named = None
 
         if "eq" in criteria:
@@ -338,7 +338,7 @@ class Source(relations.Source):
         page._record = copy.deepcopy(model._record) # pylint: disable=protected-access
         page._like = model._like # pylint: disable=protected-access
 
-        field = page._record._names["unum"] # pylint: disable=protected-access
+        field = page._record._names["home"] # pylint: disable=protected-access
         field.criteria = field.criteria or {}
         field.criteria.pop("in", None)
         field.criteria["eq"] = unum
