@@ -3,7 +3,7 @@ relations-sql==0.6.11
 relations-mysql==0.6.6
 relations-postgresql==0.6.5
 relations-sqlite==0.6.5
-relations-unifist @ git+https://github.com/relations-dil/python-relations-unifist.git@71ecead5182578279eedddf51c5e5ec145a08c5c
+relations-unifist==0.5.0
 relations-rest==0.5.5
 relations-restx==0.6.7
 Werkzeug==2.1.2
