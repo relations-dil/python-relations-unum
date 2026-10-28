@@ -1,9 +1,9 @@
-relations-dil==0.6.20
+relations-dil==0.7.0
 relations-sql==0.6.11
 relations-mysql==0.6.6
 relations-postgresql==0.6.5
 relations-sqlite==0.6.5
-relations-unifist==0.3.0
+relations-unifist==0.5.0
 relations-rest==0.5.5
 relations-restx==0.6.7
 Werkzeug==2.1.2
