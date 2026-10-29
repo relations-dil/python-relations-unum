@@ -179,6 +179,37 @@ def scribe(record_id):
     return min(rows, key=lambda row: (-row.specificity(), row.id))
 
 
+class UnumTitles(relations.Titles):
+    """
+    Titles for records that are titled by their SLUG fields and then home, as a UnifistModel's are by default: the name,
+    the fields that are set joined by spaces, and the handle in parentheses, the id's identifier, with @home added when the
+    home isn't this unum's. Each title is a string, as it is only for people to read, and the id is still what it is found by
+    """
+
+    unum = None  # Name of the unum looking
+
+    def __init__(self, model, unum):
+
+        super().__init__(model)
+
+        self.unum = unum
+
+    def add(self, model):
+        """
+        Adds a title given a model, the name and the handle in place of the values of its fields
+        """
+
+        super().add(model)
+
+        record_id = model[self.id]
+        identifier, _, home = record_id.split(":", 2)
+
+        name = " ".join(str(value) for value in self.titles[record_id][:-1] if value is not None and value != "")
+        handle = identifier if home == self.unum else f"{identifier}@{home}"
+
+        self.titles[record_id] = f"{name} ({handle})" if name else handle
+
+
 class Source(relations.Source):
     """
     Routes each operation on a record to the source that has it. It stores nothing: it passes the call to the
@@ -453,7 +484,12 @@ class Source(relations.Source):
         if model._action == "retrieve": # pylint: disable=protected-access
             self.retrieve(model, *args, **kwargs)
 
-        titles = relations.Titles(model)
+        # A model titled by its SLUG fields and then home is titled by name and handle, as seen from this unum
+
+        if model._titles and model._titles[-1] == "home": # pylint: disable=protected-access
+            titles = UnumTitles(model, self.unum)
+        else:
+            titles = relations.Titles(model)
 
         for titling in model._each(): # pylint: disable=protected-access
             titles.add(titling)

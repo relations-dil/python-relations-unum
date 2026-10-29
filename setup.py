@@ -21,7 +21,7 @@ setup(
     ],
     install_requires=[
         'relations-dil>=0.7.0',
-        'relations-unifist>=0.5.0',
+        'relations-unifist>=0.6.0',
         'relations-rest>=0.5.5'
     ],
     url="https://github.com/relations-dil/python-relations-unum",

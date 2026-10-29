@@ -350,6 +350,20 @@ class Item(Base):
     name = str
 
 
+class Named(Base):
+
+    id = str
+    version = int, 1
+    home = str
+    prefix = relations.Field(str, none=True)
+    first = relations.Field(str, none=True)
+    middle = relations.Field(str, none=True)
+    last = relations.Field(str, none=True)
+    suffix = relations.Field(str, none=True)
+
+    SLUG = ["prefix", "first", "middle", "last", "suffix"]
+
+
 class Owned(Base):
 
     id = str
@@ -706,6 +720,30 @@ class TestSource(unittest.TestCase):
 
         self.assertEqual(self.ids(self.local, "owned"), [])
         self.assertEqual(Owned.one(owned.id).titles().ids, [owned.id])
+
+        # A model titled by its SLUG fields and then home gets the name, the fields that are set, and the handle in parentheses, the id's
+        # identifier, with @home added when the home isn't this unum's. The titles are strings: they are only for people to read
+
+        Named(first="Jane", last="Doe").create()
+        self.away.data.setdefault("named", {})["dr-jane-q-doe-jr:named.pluribus:away"] = {
+            "id": "dr-jane-q-doe-jr:named.pluribus:away", "version": 1, "home": "away",
+            "prefix": "Dr.", "first": "Jane", "middle": "Q.", "last": "Doe", "suffix": "Jr."
+        }
+
+        self.assertEqual(Named.many().titles().titles, {
+            "jane-doe:named.pluribus:home": "Jane Doe (jane-doe)",
+            "dr-jane-q-doe-jr:named.pluribus:away": "Dr. Jane Q. Doe Jr. (dr-jane-q-doe-jr@away)"
+        })
+
+        # With no name at all there is only the handle, and the id is still what the title is found by
+
+        Named(id="x:named.pluribus:home", home="home").create()
+
+        self.assertEqual(Named.many().titles().titles["x:named.pluribus:home"], "x")
+
+        # Any other model keeps the titles it has
+
+        self.assertEqual(Item.many().titles().titles, {"1:item.pluribus:home": ["1:item.pluribus:home"], "2:item.pluribus:home": ["2:item.pluribus:home"]})
 
     def test_select(self):
 

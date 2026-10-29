@@ -3,6 +3,11 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.6.0] - 2026-10-29
+
+### Added
+- `UnumTitles`, the titles of records that are titled by their `SLUG` fields and then `home`, as a `UnifistModel`'s are by default (relations-unifist 0.6.0): the name, the fields that are set joined by spaces, and the handle in parentheses, the id's identifier, with `@home` added when the home isn't this unum's. In `us`, `Jane Doe (jane-doe)` for its own record and `Dr. Jane Q. Doe Jr. (dr-jane-q-doe-jr@them)` for one from `them`; with no name at all just the handle. Each title is a string, as it is only for people to read: the id is what a record is stored and found by, and nothing about a record changes. The routed source builds its titles with it for any model whose titles end in `home`, and any other model keeps the titles it has, so a GUI shows them as it is with no change (relations-dil/python-relations-unifist#16).
+
 ## [0.5.0] - 2026-10-28
 
 ### Changed
