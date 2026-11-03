@@ -227,6 +227,8 @@ class Source(relations.Source):
     unum = None     # Name of this unum
     local = None    # Name of the source this unum's own data is in
     members = None  # Name of the source of each other unum, by the unum's name, apart from the Route rows
+    cert = None     # File of the certificate this unum presents to the others, or the files of the certificate and its key
+    verify = None   # File of the CA certificate the others' certificates are verified with
 
     def __init__(self, name, **kwargs): # pylint: disable=unused-argument
 
@@ -249,6 +251,22 @@ class Source(relations.Source):
         finally:
             self._syncing = False
 
+    def _secure(self):
+        """
+        What each RestSource is made with so that its calls present this unum's certificate and verify the
+        other's: only what's set, a list of files, as a config file gives it, being the pair requests takes
+        """
+
+        secure = {}
+
+        if self.cert is not None:
+            secure["cert"] = tuple(self.cert) if isinstance(self.cert, (list, tuple)) else self.cert
+
+        if self.verify is not None:
+            secure["verify"] = self.verify
+
+        return secure
+
     def reach(self, holder, url, model=None):
         """
         The name of the source of a holder at a url, made when the holder is new or its url changed, and not
@@ -260,7 +278,7 @@ class Source(relations.Source):
 
         if reached is None or reached[0] != url:
 
-            source = RestSource(f"{self.name}-{holder}", url)
+            source = RestSource(f"{self.name}-{holder}", url, **self._secure())
 
             if model is not None:
                 source.init(model)
