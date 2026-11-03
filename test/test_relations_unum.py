@@ -981,6 +981,7 @@ class TestRoutedSource(unittest.TestCase):
         self.local = relations.unittest.MockSource("local")
 
         self.made = []
+        self.secured = []
 
         patcher = unittest.mock.patch("relations_unum.RestSource", side_effect=self.rest)
         patcher.start()
@@ -994,13 +995,14 @@ class TestRoutedSource(unittest.TestCase):
 
         relations_unifist.UnifistModel.HOME = None
 
-    def rest(self, name, url):
+    def rest(self, name, url, **kwargs):
 
-        # What the RestSource of a holder is, here a source of its own that keeps the url it was made with
+        # What the RestSource of a holder is, here a source of its own that keeps the url it was made with, and what else it was told
 
         source = relations.unittest.MockSource(name)
         source.reached = url
         self.made.append((name, url))
+        self.secured.append(kwargs)
 
         return source
 
@@ -1062,6 +1064,61 @@ class TestRoutedSource(unittest.TestCase):
 
         self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["away"], "static")
         self.assertEqual(self.source.holders(relations_unum.Route.many().sort("id").retrieve())["cloud"], "pluribus-cloud")
+
+    def test_secure(self):
+
+        # Nothing set, nothing passed to the RestSource of a holder, so a unum with no certificates works as it did
+
+        self.member("away")
+        self.source.holders(relations_unum.Route.many().retrieve())
+
+        self.assertEqual(self.secured, [{}])
+        self.assertIsNone(self.source.cert)
+        self.assertIsNone(self.source.verify)
+
+        # The files of the certificate and key to present, and of the CA to verify with, are given to the RestSource of each holder
+
+        self.member("cloud")
+
+        self.source.cert = ("/certs/client/tls.crt", "/certs/client/tls.key")
+        self.source.verify = "/certs/ca/ca.crt"
+
+        self.source.holders(relations_unum.Route.many().sort("id").retrieve())
+
+        self.assertEqual(self.secured[-1], {"cert": ("/certs/client/tls.crt", "/certs/client/tls.key"), "verify": "/certs/ca/ca.crt"})
+        self.assertEqual(self.made[-1], ("pluribus-cloud", "http://cloud"))
+
+        # A list, as a config file gives it, becomes the pair requests takes, and one file stays one file
+
+        self.source.reached = {}
+        self.source.cert = ["/certs/client/tls.crt", "/certs/client/tls.key"]
+
+        self.source.holders(relations_unum.Route.many().sort("id").retrieve())
+
+        self.assertEqual(self.secured[-1]["cert"], ("/certs/client/tls.crt", "/certs/client/tls.key"))
+
+        self.source.reached = {}
+        self.source.cert = "/certs/client/both.pem"
+
+        self.source.holders(relations_unum.Route.many().sort("id").retrieve())
+
+        self.assertEqual(self.secured[-1]["cert"], "/certs/client/both.pem")
+
+        # Either one alone
+
+        self.source.reached = {}
+        self.source.cert = None
+
+        self.source.holders(relations_unum.Route.many().sort("id").retrieve())
+
+        self.assertEqual(self.secured[-1], {"verify": "/certs/ca/ca.crt"})
+
+        # And they're given when the source is made
+
+        source = relations_unum.Source("secured", unum="home", local="local", cert="/certs/both.pem", verify="/certs/ca.crt")
+
+        self.assertEqual(source.cert, "/certs/both.pem")
+        self.assertEqual(source.verify, "/certs/ca.crt")
 
     def test_universe(self):
 
