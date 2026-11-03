@@ -3,6 +3,11 @@
 All notable changes to python-relations-unum are recorded here, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [0.7.0] - 2026-11-03
+
+### Added
+- `cert` and `verify` on the routed source, given when it is made like `unum` and `local`: the file of the certificate this unum presents to the others (or the files of the certificate and its key, a list as a config file gives it becoming the pair `requests` takes) and the file of the CA certificate theirs are verified with. Each `RestSource` it makes for a holder is made with them, so a Route with an `https://` url works against a unum that checks client certificates and has its own CA. The files are read on each new connection, so a renewed one is used without a restart. Without them nothing changes (relations-dil/python-relations-unum#24).
+
 ## [0.6.0] - 2026-10-29
 
 ### Added
